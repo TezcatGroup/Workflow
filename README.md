@@ -19,6 +19,20 @@ Aplicación SvelteKit con TypeScript, Tailwind, Drizzle ORM y PostgreSQL 16. Imp
 7. Ejecutar `docker compose up -d --build app` y abrir `http://localhost:3000/login`.
 8. Ejecutar `pnpm db:studio` para inspeccionar la base en la dirección indicada por Drizzle Studio.
 
+El directorio `database/` incluye una exportación SQL del esquema real de PostgreSQL 16 y datos de ejemplo para departamentos. La migración de Drizzle sigue siendo la forma recomendada de crear las tablas. Después del paso 5, se pueden cargar los datos de ejemplo con PowerShell:
+
+```powershell
+Get-Content -Raw -Encoding UTF8 database/seed_departamentos.sql | docker compose exec -T db psql -U tezcat -d tezcat_workflow
+```
+
+Si se desea restaurar el esquema desde el respaldo SQL en una base **vacía**, en lugar de `pnpm db:migrate`, ejecutar:
+
+```powershell
+Get-Content -Raw -Encoding UTF8 database/tezcat_workflow_schema.sql | docker compose exec -T db psql -v ON_ERROR_STOP=1 -U tezcat -d tezcat_workflow
+```
+
+Los comandos asumen los valores predeterminados `POSTGRES_USER=tezcat` y `POSTGRES_DB=tezcat_workflow`; si se modifican en `.env`, sustituirlos también en los comandos. No aplicar el respaldo de esquema sobre una base que ya tenga las tablas. El respaldo deliberadamente no contiene datos de usuarios, hashes de contraseñas ni sesiones; el administrador se crea en el paso 6 con una clave propia.
+
 `docker compose down` detiene los servicios y conserva el volumen `postgres_data`. El archivo Compose publica PostgreSQL únicamente en `127.0.0.1:5433`, para que los comandos locales puedan conectarse sin chocar con una instalación local en 5432. La aplicación usa `db:5432` dentro de la red de Compose. No ejecutar `docker compose down -v` salvo que se quiera borrar la base de datos.
 
 ## Desarrollo y verificación
