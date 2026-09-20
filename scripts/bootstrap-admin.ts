@@ -15,11 +15,14 @@ const client = postgres(url);
 const db = drizzle(client);
 try {
   const [existing] = await db.select({ id: usuarios.id }).from(usuarios).where(eq(usuarios.email, email));
+  const passwordHash = await argon2.hash(password, { type: argon2.argon2id,
+    memoryCost: 19 * 1024, timeCost: 2, parallelism: 1 });
   if (existing) {
-    console.log('El administrador inicial ya existe.');
+    await db.update(usuarios).set({ passwordHash, rol: 'ADMIN', activo: true,
+      intentosFallidos: 0, bloqueadoHasta: null, actualizadoEn: new Date() })
+      .where(eq(usuarios.id, existing.id));
+    console.log('Contraseña del administrador inicial actualizada.');
   } else {
-    const passwordHash = await argon2.hash(password, { type: argon2.argon2id,
-      memoryCost: 19 * 1024, timeCost: 2, parallelism: 1 });
     await db.insert(usuarios).values({ nombre: 'Administrador inicial', email,
       passwordHash, rol: 'ADMIN' });
     console.log('Administrador inicial creado.');

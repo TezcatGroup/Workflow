@@ -15,11 +15,18 @@ Aplicación SvelteKit con TypeScript, Tailwind, Drizzle ORM y PostgreSQL 16. Imp
 3. Ejecutar `pnpm install`.
 4. Ejecutar `docker compose up -d db` y comprobar `docker compose ps`. Esperar `healthy`.
 5. Ejecutar `pnpm db:migrate` para aplicar la migración versionada de `drizzle/` y crear `departamentos`, `usuarios`, `sesiones`, `auditoria_usuarios` y el enum `rol_usuario`. `pnpm db:push` queda reservado para sincronización rápida durante desarrollo local.
-6. Ejecutar `pnpm db:bootstrap` para crear el primer administrador con `ADMIN_EMAIL` y `ADMIN_PASSWORD`.
-7. Ejecutar `docker compose up -d --build app` y abrir `http://localhost:3000/login`.
-8. Ejecutar `pnpm db:studio` para inspeccionar la base en la dirección indicada por Drizzle Studio.
+6. Si se requieren los datos completos de la instancia universitaria de prueba, importarlos **antes** de crear el administrador:
 
-El directorio `database/` incluye una exportación SQL del esquema real de PostgreSQL 16 y datos de ejemplo para departamentos. La migración de Drizzle sigue siendo la forma recomendada de crear las tablas. Después del paso 5, se pueden cargar los datos de ejemplo con PowerShell:
+   ```powershell
+   Get-Content -Raw -Encoding UTF8 database/tezcat_workflow_data.sql | docker compose exec -T db psql -v ON_ERROR_STOP=1 -U tezcat -d tezcat_workflow
+   ```
+
+   Este paso es opcional para una instalación limpia y se ejecuta una sola vez en una base sin filas. El archivo contiene las cuatro tablas pobladas: 8 departamentos, 26 usuarios, 29 sesiones y 54 eventos de auditoría al momento de la exportación. Incluye hashes de contraseñas y tokens de sesión de prueba; no usar esta copia como base de producción.
+7. Ejecutar `pnpm db:bootstrap` para crear o actualizar el administrador indicado en `ADMIN_EMAIL` con `ADMIN_PASSWORD`. Si se importó el volcado, este comando establece una contraseña nueva para el administrador inicial y reactiva su cuenta. Volver a ejecutarlo restablece esa contraseña.
+8. Ejecutar `docker compose up -d --build app` y abrir `http://localhost:3000/login`.
+9. Ejecutar `pnpm db:studio` para inspeccionar la base en la dirección indicada por Drizzle Studio.
+
+El directorio `database/` incluye una exportación SQL del esquema real de PostgreSQL 16, un volcado de **todos los datos** de la instancia de prueba y un seed mínimo opcional para departamentos. La migración de Drizzle sigue siendo la forma recomendada de crear las tablas. Si se prefiere únicamente el seed mínimo en vez del volcado completo, cargarlo después del paso 5 con PowerShell:
 
 ```powershell
 Get-Content -Raw -Encoding UTF8 database/seed_departamentos.sql | docker compose exec -T db psql -U tezcat -d tezcat_workflow
@@ -31,7 +38,7 @@ Si se desea restaurar el esquema desde el respaldo SQL en una base **vacía**, e
 Get-Content -Raw -Encoding UTF8 database/tezcat_workflow_schema.sql | docker compose exec -T db psql -v ON_ERROR_STOP=1 -U tezcat -d tezcat_workflow
 ```
 
-Los comandos asumen los valores predeterminados `POSTGRES_USER=tezcat` y `POSTGRES_DB=tezcat_workflow`; si se modifican en `.env`, sustituirlos también en los comandos. No aplicar el respaldo de esquema sobre una base que ya tenga las tablas. El respaldo deliberadamente no contiene datos de usuarios, hashes de contraseñas ni sesiones; el administrador se crea en el paso 6 con una clave propia.
+Los comandos asumen los valores predeterminados `POSTGRES_USER=tezcat` y `POSTGRES_DB=tezcat_workflow`; si se modifican en `.env`, sustituirlos también en los comandos. No aplicar el respaldo de esquema sobre una base que ya tenga las tablas ni importar el volcado de datos dos veces. `.env` no se publica: contiene los secretos propios de cada instalación. Para una base real, partir del esquema vacío y crear cuentas nuevas en lugar de importar la muestra universitaria.
 
 `docker compose down` detiene los servicios y conserva el volumen `postgres_data`. El archivo Compose publica PostgreSQL únicamente en `127.0.0.1:5433`, para que los comandos locales puedan conectarse sin chocar con una instalación local en 5432. La aplicación usa `db:5432` dentro de la red de Compose. No ejecutar `docker compose down -v` salvo que se quiera borrar la base de datos.
 
