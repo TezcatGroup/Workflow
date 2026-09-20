@@ -1,0 +1,41 @@
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-tezcat}:${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD en .env}@db:5432/${POSTGRES_DB:-tezcat_workflow}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@tezcat.local}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Define ADMIN_PASSWORD en .env}
+      ORIGIN: http://localhost:3000
+      PORT: 3000
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - private
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-tezcat_workflow}
+      POSTGRES_USER: ${POSTGRES_USER:-tezcat}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD en .env}
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - private
+
+volumes:
+  postgres_data:
+
+networks:
+  private:

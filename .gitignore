@@ -1,0 +1,9 @@
+node_modules/
+.svelte-kit/
+build/
+.env
+*.log
+rendered*/
+*.docx
+build_sprint1*.py
+arquitectura-sprint1.png

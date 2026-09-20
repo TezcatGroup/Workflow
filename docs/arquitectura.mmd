@@ -1,0 +1,14 @@
+flowchart LR
+  browser[Navegador] -->|HTTPS y cookie| hooks[hooks.server.ts]
+  hooks -->|App.Locals| routes[Loaders y actions SvelteKit]
+  routes --> auth[auth.ts y admin.ts]
+  auth --> orm[Drizzle ORM]
+  routes --> orm
+  orm -->|SQL parametrizado| db[(PostgreSQL 16)]
+  subgraph docker[Red de Docker Compose]
+    routes
+    auth
+    orm
+    db
+  end
+  hooks -->|303 si falta sesión| browser
