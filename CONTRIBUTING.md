@@ -23,13 +23,15 @@ cd workflow
 Instala las dependencias:
 
 ```bash id="g3"
-npm install
+corepack pnpm install
 ```
+
+Este proyecto utiliza **pnpm**. Corepack viene incluido con las versiones modernas de Node.js y permite ejecutar la versión adecuada de pnpm sin instalarla globalmente.
 
 Inicia el proyecto en modo desarrollo:
 
 ```bash id="g4"
-npm run dev
+corepack pnpm dev
 ```
 
 ---
@@ -244,24 +246,33 @@ git push
 
 ## 8. Crear una rama
 
-Cuando quieras trabajar en algo separado puedes crear una rama.
+No trabajes directamente sobre `main`. Crea una rama para cada funcionalidad, corrección o cambio de documentación.
 
-Primero actualiza el proyecto:
+Primero cambia a `main` y descarga su versión más reciente:
 
 ```bash id="g29"
-git pull
+git switch main
+git pull origin main
 ```
 
 Después crea la rama:
 
 ```bash id="g30"
-git checkout -b nombre-de-la-rama
+git switch -c tipo/nombre-de-la-rama
 ```
 
 Por ejemplo:
 
 ```bash id="g31"
-git checkout -b task-system
+git switch -c feature/task-system
+```
+
+Utiliza nombres cortos, descriptivos y sin espacios. Algunos prefijos recomendados son:
+
+```text
+feature/nueva-funcionalidad
+fix/correccion-de-error
+docs/actualizar-guia
 ```
 
 Para comprobar en qué rama estás:
@@ -286,19 +297,13 @@ El `*` indica la rama actual.
 Para regresar a otra rama:
 
 ```bash id="g34"
-git checkout main
-```
-
-O utilizando el comando moderno:
-
-```bash id="g35"
 git switch main
 ```
 
-Para crear una nueva rama también puedes utilizar:
+Para cambiar a una rama existente:
 
 ```bash id="g36"
-git switch -c task-system
+git switch feature/task-system
 ```
 
 ---
@@ -308,7 +313,7 @@ git switch -c task-system
 La primera vez que subas una rama:
 
 ```bash id="g37"
-git push -u origin task-system
+git push -u origin feature/task-system
 ```
 
 Después de eso normalmente bastará con:
@@ -367,14 +372,14 @@ Si el proyecto recibió cambios mientras trabajabas, primero guarda tus cambios 
 Después puedes actualizar la rama principal:
 
 ```bash id="g40"
-git checkout main
-git pull
+git switch main
+git pull origin main
 ```
 
 Regresa a tu rama:
 
 ```bash id="g41"
-git checkout task-system
+git switch feature/task-system
 ```
 
 Y trae los cambios:
@@ -560,13 +565,13 @@ Nunca coloques valores reales en `.env.example`.
 Para instalar una dependencia:
 
 ```bash id="g60"
-npm install nombre-paquete
+corepack pnpm add nombre-paquete
 ```
 
 Ejemplo:
 
 ```bash id="g61"
-npm install zod
+corepack pnpm add zod
 ```
 
 Antes de agregar una dependencia considera si realmente es necesaria.
@@ -575,13 +580,13 @@ Cuando agregues una dependencia, asegúrate de subir también los cambios corres
 
 ```text id="g62"
 package.json
-package-lock.json
+pnpm-lock.yaml
 ```
 
 Ejemplo de commit:
 
 ```bash id="g63"
-git add package.json package-lock.json
+git add package.json pnpm-lock.yaml
 git commit -m "chore: add zod dependency"
 ```
 
@@ -637,15 +642,16 @@ git push
 Si estás trabajando en una rama nueva:
 
 ```bash id="g66"
-git pull
-git switch -c task-system
+git switch main
+git pull origin main
+git switch -c feature/task-system
 
 # Trabajar...
 
 git add .
 git commit -m "feat: add task creation system"
 
-git push -u origin task-system
+git push -u origin feature/task-system
 ```
 
 ---
