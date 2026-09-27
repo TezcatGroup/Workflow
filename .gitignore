@@ -7,3 +7,4 @@ rendered*/
 *.docx
 build_sprint1*.py
 arquitectura-sprint1.png
+package-lock.json
