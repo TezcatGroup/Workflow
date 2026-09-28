@@ -42,3 +42,14 @@ export const auditoriaUsuarios = pgTable('auditoria_usuarios', {
   detalle: jsonb('detalle').$type<Record<string, unknown>>().notNull().default({}),
   creadaEn: timestamp('creada_en', { withTimezone: true }).notNull().defaultNow()
 }, (t) => [index('auditoria_actor_fecha_idx').on(t.actorId, t.creadaEn)]);
+
+export const proyectos = pgTable('proyectos', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  nombre: varchar('nombre', { length: 160 }).notNull(),
+  descripcion: text('descripcion'),
+  departamentoId: uuid('departamento_id').references(() => departamentos.id, { onDelete: 'set null' }),
+  creadoPorId: uuid('creado_por_id').references(() => usuarios.id, { onDelete: 'set null' }),
+  activo: boolean('activo').notNull().default(true),
+  creadoEn: timestamp('creado_en', { withTimezone: true }).notNull().defaultNow(),
+  actualizadoEn: timestamp('actualizado_en', { withTimezone: true }).notNull().defaultNow()
+}, (t) => [index('proyectos_departamento_idx').on(t.departamentoId)]);
