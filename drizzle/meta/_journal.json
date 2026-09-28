@@ -8,6 +8,13 @@
       "when": 1789879641027,
       "tag": "0000_sprint1_inicial",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1790636752642,
+      "tag": "0001_ola1_proyectos_tareas",
+      "breakpoints": true
     }
   ]
 }
