@@ -141,3 +141,54 @@ export const tareaRevisiones = pgTable('tarea_revisiones', {
   observaciones: text('observaciones'),
   creadaEn: timestamp('creada_en', { withTimezone: true }).notNull().defaultNow()
 }, (t) => [index('tarea_revisiones_tarea_idx').on(t.tareaId)]);
+
+export const ramas = pgTable('ramas', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  nombre: varchar('nombre', { length: 100 }).notNull().unique(),
+  descripcion: text('descripcion'),
+  color: varchar('color', { length: 30 }),
+  activo: boolean('activo').notNull().default(true),
+  creadaEn: timestamp('creada_en', { withTimezone: true }).notNull().defaultNow()
+});
+
+export const tareaRamas = pgTable('tarea_ramas', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tareaId: uuid('tarea_id').notNull().references(() => tareas.id, { onDelete: 'cascade' }),
+  ramaId: uuid('rama_id').notNull().references(() => ramas.id, { onDelete: 'cascade' }),
+  puntos: integer('puntos').notNull().default(0),
+  creadaEn: timestamp('creada_en', { withTimezone: true }).notNull().defaultNow()
+}, (t) => [
+  index('tarea_ramas_tarea_idx').on(t.tareaId),
+  index('tarea_ramas_rama_idx').on(t.ramaId)
+]);
+
+export const movimientosXp = pgTable('movimientos_xp', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  usuarioId: uuid('usuario_id').notNull().references(() => usuarios.id, { onDelete: 'cascade' }),
+  tareaId: uuid('tarea_id').references(() => tareas.id, { onDelete: 'set null' }),
+  cantidad: integer('cantidad').notNull(),
+  motivo: varchar('motivo', { length: 255 }).notNull(),
+  creadoEn: timestamp('creado_en', { withTimezone: true }).notNull().defaultNow()
+}, (t) => [index('movimientos_xp_usuario_idx').on(t.usuarioId)]);
+
+export const movimientosPuntos = pgTable('movimientos_puntos', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  usuarioId: uuid('usuario_id').notNull().references(() => usuarios.id, { onDelete: 'cascade' }),
+  tareaId: uuid('tarea_id').references(() => tareas.id, { onDelete: 'set null' }),
+  cantidad: integer('cantidad').notNull(),
+  motivo: varchar('motivo', { length: 255 }).notNull(),
+  creadoEn: timestamp('creado_en', { withTimezone: true }).notNull().defaultNow()
+}, (t) => [index('movimientos_puntos_usuario_idx').on(t.usuarioId)]);
+
+export const movimientosRama = pgTable('movimientos_rama', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  usuarioId: uuid('usuario_id').notNull().references(() => usuarios.id, { onDelete: 'cascade' }),
+  ramaId: uuid('rama_id').notNull().references(() => ramas.id, { onDelete: 'cascade' }),
+  tareaId: uuid('tarea_id').references(() => tareas.id, { onDelete: 'set null' }),
+  puntos: integer('puntos').notNull(),
+  creadoEn: timestamp('creado_en', { withTimezone: true }).notNull().defaultNow()
+}, (t) => [
+  index('movimientos_rama_usuario_idx').on(t.usuarioId),
+  index('movimientos_rama_rama_idx').on(t.ramaId)
+]);
+
