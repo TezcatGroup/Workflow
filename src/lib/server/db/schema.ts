@@ -90,3 +90,54 @@ export const tareaCriterios = pgTable('tarea_criterios', {
   creadoEn: timestamp('creado_en', { withTimezone: true }).notNull().defaultNow()
 }, (t) => [index('tarea_criterios_tarea_idx').on(t.tareaId)]);
 
+export const tareaArchivos = pgTable('tarea_archivos', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tareaId: uuid('tarea_id').notNull().references(() => tareas.id, { onDelete: 'cascade' }),
+  subidoPorId: uuid('subido_por_id').references(() => usuarios.id, { onDelete: 'set null' }),
+  nombre: varchar('nombre', { length: 255 }).notNull(),
+  ruta: text('ruta').notNull(),
+  mimeType: varchar('mime_type', { length: 100 }),
+  tamanoBytes: integer('tamano_bytes'),
+  creadoEn: timestamp('creado_en', { withTimezone: true }).notNull().defaultNow()
+}, (t) => [index('tarea_archivos_tarea_idx').on(t.tareaId)]);
+
+export const tareaMensajes = pgTable('tarea_mensajes', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tareaId: uuid('tarea_id').notNull().references(() => tareas.id, { onDelete: 'cascade' }),
+  autorId: uuid('autor_id').references(() => usuarios.id, { onDelete: 'set null' }),
+  contenido: text('contenido').notNull(),
+  creadoEn: timestamp('creado_en', { withTimezone: true }).notNull().defaultNow()
+}, (t) => [index('tarea_mensajes_tarea_idx').on(t.tareaId)]);
+
+export const tareaEventos = pgTable('tarea_eventos', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tareaId: uuid('tarea_id').notNull().references(() => tareas.id, { onDelete: 'cascade' }),
+  actorId: uuid('actor_id').references(() => usuarios.id, { onDelete: 'set null' }),
+  tipo: varchar('tipo', { length: 50 }).notNull(),
+  detalle: jsonb('detalle').notNull().default({}),
+  creadoEn: timestamp('creado_en', { withTimezone: true }).notNull().defaultNow()
+}, (t) => [index('tarea_eventos_tarea_idx').on(t.tareaId)]);
+
+export const estadoDelegacion = pgEnum('estado_delegacion', ['PENDIENTE', 'ACEPTADA', 'RECHAZADA']);
+
+export const tareaDelegaciones = pgTable('tarea_delegaciones', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tareaId: uuid('tarea_id').notNull().references(() => tareas.id, { onDelete: 'cascade' }),
+  solicitanteId: uuid('solicitante_id').references(() => usuarios.id, { onDelete: 'set null' }),
+  destinatarioId: uuid('destinatario_id').references(() => usuarios.id, { onDelete: 'set null' }),
+  motivo: text('motivo'),
+  estado: estadoDelegacion('estado').notNull().default('PENDIENTE'),
+  respondidaEn: timestamp('respondida_en', { withTimezone: true }),
+  creadaEn: timestamp('creada_en', { withTimezone: true }).notNull().defaultNow()
+}, (t) => [index('tarea_delegaciones_tarea_idx').on(t.tareaId)]);
+
+export const resultadoRevision = pgEnum('resultado_revision', ['APROBADA', 'DEVUELTA']);
+
+export const tareaRevisiones = pgTable('tarea_revisiones', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tareaId: uuid('tarea_id').notNull().references(() => tareas.id, { onDelete: 'cascade' }),
+  revisorId: uuid('revisor_id').references(() => usuarios.id, { onDelete: 'set null' }),
+  resultado: resultadoRevision('resultado').notNull(),
+  observaciones: text('observaciones'),
+  creadaEn: timestamp('creada_en', { withTimezone: true }).notNull().defaultNow()
+}, (t) => [index('tarea_revisiones_tarea_idx').on(t.tareaId)]);
