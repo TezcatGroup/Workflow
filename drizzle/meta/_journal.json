@@ -15,6 +15,13 @@
       "when": 1790636752642,
       "tag": "0001_ola1_proyectos_tareas",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790639498245,
+      "tag": "0002_ola2_trazabilidad_revisiones",
+      "breakpoints": true
     }
   ]
 }
