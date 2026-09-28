@@ -53,3 +53,40 @@ export const proyectos = pgTable('proyectos', {
   creadoEn: timestamp('creado_en', { withTimezone: true }).notNull().defaultNow(),
   actualizadoEn: timestamp('actualizado_en', { withTimezone: true }).notNull().defaultNow()
 }, (t) => [index('proyectos_departamento_idx').on(t.departamentoId)]);
+
+export const tipoTarea = pgEnum('tipo_tarea', ['OBLIGATORIA', 'OPCIONAL']);
+export const estadoTarea = pgEnum('estado_tarea', ['ASIGNADA', 'EN_PROCESO', 'EN_REVISION', 'TERMINADA']);
+
+export const tareas = pgTable('tareas', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  titulo: varchar('titulo', { length: 200 }).notNull(),
+  descripcion: text('descripcion'),
+  tipo: tipoTarea('tipo').notNull(),
+  estado: estadoTarea('estado').notNull().default('ASIGNADA'),
+  prioridad: varchar('prioridad', { length: 20 }),
+  dificultad: varchar('dificultad', { length: 20 }),
+  requisitos: text('requisitos'),
+  proyectoId: uuid('proyecto_id').references(() => proyectos.id, { onDelete: 'set null' }),
+  departamentoId: uuid('departamento_id').references(() => departamentos.id, { onDelete: 'set null' }),
+  creadoPorId: uuid('creado_por_id').references(() => usuarios.id, { onDelete: 'set null' }),
+  responsableId: uuid('responsable_id').references(() => usuarios.id, { onDelete: 'set null' }),
+  revisorId: uuid('revisor_id').references(() => usuarios.id, { onDelete: 'set null' }),
+  fechaLimite: timestamp('fecha_limite', { withTimezone: true }).notNull(),
+  xpOfrecido: integer('xp_ofrecido'),
+  puntosOfrecidos: integer('puntos_ofrecidos'),
+  creadoEn: timestamp('creado_en', { withTimezone: true }).notNull().defaultNow(),
+  actualizadoEn: timestamp('actualizado_en', { withTimezone: true }).notNull().defaultNow()
+}, (t) => [
+  index('tareas_proyecto_idx').on(t.proyectoId),
+  index('tareas_responsable_idx').on(t.responsableId),
+  index('tareas_estado_idx').on(t.estado)
+]);
+
+export const tareaCriterios = pgTable('tarea_criterios', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tareaId: uuid('tarea_id').notNull().references(() => tareas.id, { onDelete: 'cascade' }),
+  descripcion: varchar('descripcion', { length: 255 }).notNull(),
+  completado: boolean('completado').notNull().default(false),
+  creadoEn: timestamp('creado_en', { withTimezone: true }).notNull().defaultNow()
+}, (t) => [index('tarea_criterios_tarea_idx').on(t.tareaId)]);
+
