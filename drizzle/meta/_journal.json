@@ -22,6 +22,13 @@
       "when": 1790639498245,
       "tag": "0002_ola2_trazabilidad_revisiones",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1790639820606,
+      "tag": "0003_ola3_gamificacion",
+      "breakpoints": true
     }
   ]
 }
