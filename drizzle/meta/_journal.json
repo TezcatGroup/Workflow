@@ -29,6 +29,13 @@
       "when": 1790639820606,
       "tag": "0003_ola3_gamificacion",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1790640437258,
+      "tag": "0004_ola4_recompensas_notificaciones",
+      "breakpoints": true
     }
   ]
 }
