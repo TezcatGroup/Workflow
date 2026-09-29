@@ -192,3 +192,41 @@ export const movimientosRama = pgTable('movimientos_rama', {
   index('movimientos_rama_rama_idx').on(t.ramaId)
 ]);
 
+export const recompensas = pgTable('recompensas', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  nombre: varchar('nombre', { length: 160 }).notNull(),
+  descripcion: text('descripcion'),
+  costoPuntos: integer('costo_puntos').notNull(),
+  stock: integer('stock'),
+  imagenUrl: text('imagen_url'),
+  activo: boolean('activo').notNull().default(true),
+  creadaEn: timestamp('creada_en', { withTimezone: true }).notNull().defaultNow(),
+  actualizadaEn: timestamp('actualizada_en', { withTimezone: true }).notNull().defaultNow()
+});
+
+export const estadoCanje = pgEnum('estado_canje', ['PENDIENTE', 'ENTREGADO', 'CANCELADO']);
+
+export const canjes = pgTable('canjes', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  usuarioId: uuid('usuario_id').notNull().references(() => usuarios.id, { onDelete: 'cascade' }),
+  recompensaId: uuid('recompensa_id').references(() => recompensas.id, { onDelete: 'set null' }),
+  puntosGastados: integer('puntos_gastados').notNull(),
+  estado: estadoCanje('estado').notNull().default('PENDIENTE'),
+  entregadoEn: timestamp('entregado_en', { withTimezone: true }),
+  creadoEn: timestamp('creado_en', { withTimezone: true }).notNull().defaultNow()
+}, (t) => [index('canjes_usuario_idx').on(t.usuarioId)]);
+
+export const notificaciones = pgTable('notificaciones', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  usuarioId: uuid('usuario_id').notNull().references(() => usuarios.id, { onDelete: 'cascade' }),
+  tareaId: uuid('tarea_id').references(() => tareas.id, { onDelete: 'set null' }),
+  titulo: varchar('titulo', { length: 200 }).notNull(),
+  mensaje: text('mensaje').notNull(),
+  enlace: text('enlace'),
+  leida: boolean('leida').notNull().default(false),
+  creadaEn: timestamp('creada_en', { withTimezone: true }).notNull().defaultNow()
+}, (t) => [
+  index('notificaciones_usuario_idx').on(t.usuarioId),
+  index('notificaciones_leida_idx').on(t.leida)
+]);
+
