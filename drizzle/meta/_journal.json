@@ -36,6 +36,13 @@
       "when": 1790640437258,
       "tag": "0004_ola4_recompensas_notificaciones",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1791160846832,
+      "tag": "0005_ola5_campos_dashboard",
+      "breakpoints": true
     }
   ]
 }

@@ -1,5 +1,5 @@
 import {
-  boolean, index, integer, jsonb, pgEnum, pgTable,
+  boolean, index, integer, serial, jsonb, pgEnum, pgTable,
   text, timestamp, uuid, varchar
 } from 'drizzle-orm/pg-core';
 
@@ -71,6 +71,9 @@ export const tareas = pgTable('tareas', {
   creadoPorId: uuid('creado_por_id').references(() => usuarios.id, { onDelete: 'set null' }),
   responsableId: uuid('responsable_id').references(() => usuarios.id, { onDelete: 'set null' }),
   revisorId: uuid('revisor_id').references(() => usuarios.id, { onDelete: 'set null' }),
+  numero: serial('numero'),
+  impacto: varchar('impacto', { length: 80 }),
+  estimadoMinutos: integer('estimado_minutos'),
   fechaLimite: timestamp('fecha_limite', { withTimezone: true }).notNull(),
   xpOfrecido: integer('xp_ofrecido'),
   puntosOfrecidos: integer('puntos_ofrecidos'),
