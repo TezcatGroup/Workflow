@@ -10,6 +10,6 @@
   <dl class="grid gap-3 rounded border bg-white p-5">
     <div><dt class="font-semibold">Nombre</dt><dd>{data.user.nombre}</dd></div>
     <div><dt class="font-semibold">Rol</dt><dd>{data.user.rol}</dd></div>
-    <div><dt class="font-semibold">Departamento</dt><dd>{data.user.departamentoId ?? 'Sin asignar'}</dd></div>
+    <div><dt class="font-semibold">Departamento</dt><dd>{data.departamento ?? 'Sin asignar'}</dd></div>
   </dl>
 </main>

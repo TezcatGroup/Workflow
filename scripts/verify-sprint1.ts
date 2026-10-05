@@ -49,12 +49,15 @@ try {
   assert.equal(adminLogin.status, 303);
   assert.match(adminCookie.setCookie, /HttpOnly/i);
   assert.match(adminCookie.setCookie, /SameSite=Lax/i);
-  const adminDashboard = await request('/dashboard', { headers: { cookie: adminCookie.value } });
-  assert.equal(adminDashboard.status, 200);
-  const adminHtml = await adminDashboard.text();
+  const adminDashboardRedirect = await request('/dashboard', { headers: { cookie: adminCookie.value } });
+  assert.equal(adminDashboardRedirect.status, 303);
+  assert.equal(adminDashboardRedirect.headers.get('location'), '/admin');
+  const adminPanel = await request('/admin', { headers: { cookie: adminCookie.value } });
+  assert.equal(adminPanel.status, 200);
+  const adminHtml = await adminPanel.text();
   assert.match(adminHtml, /ADMIN/);
-  assert.match(adminHtml, /departamentos/);
-  passed('TC-01', 'login, sesión HttpOnly/SameSite y dashboard');
+  assert.match(adminHtml, /Departamentos/);
+  passed('TC-01', 'login, sesión HttpOnly/SameSite, redirección a /admin y panel visible');
 
   const depName = `Pruebas ${suffix}`;
   const depCreate = await action('/admin/departamentos', 'crear', { nombre: depName }, adminCookie.value);
@@ -146,11 +149,13 @@ try {
   assert.equal(managerDashboard.status, 200);
   const managerHtml = await managerDashboard.text();
   assert.match(managerHtml, /ENCARGADO/);
-  assert.match(managerHtml, /miembrosActivos/);
+  assert.match(managerHtml, /Mi equipo/);
   const [departmentCount] = await db.select({ total: sql<number>`count(*)::int` }).from(usuarios)
     .where(and(eq(usuarios.departamentoId, dep.id), eq(usuarios.activo, true)));
-  assert.match(managerHtml, new RegExp(`${departmentCount.total}\\s+miembrosActivos`));
-  assert.doesNotMatch(managerHtml, /Auditoría administrativa/);
+  // La tarjeta "Mi equipo" imprime el número dentro de este span exacto (TarjetaMetrica.svelte).
+  assert.match(managerHtml, new RegExp(`text-4xl font-bold tracking-tight">${departmentCount.total}<`));
+  // El ENCARGADO no debe ver el módulo de Auditoría (solo visible para ADMIN).
+  assert.doesNotMatch(managerHtml, /href="\/admin\/auditoria"/);
   passed('TC-07', 'ADMIN y ENCARGADO reciben widgets y métricas diferenciadas');
 
   console.log(results.join('\n'));
