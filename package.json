@@ -8,6 +8,7 @@
     "preview": "vite preview",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "test": "tsx scripts/verify-sprint1.ts",
+    "test:sprint4": "tsx scripts/verify-sprint4.ts",
     "db:push": "drizzle-kit push",
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
