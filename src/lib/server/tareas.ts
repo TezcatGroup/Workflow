@@ -90,17 +90,27 @@ function validarCriterios(valores: FormDataEntryValue[]): string[] {
   return criterios;
 }
 
-/** Usuario activo del mismo departamento (ENCARGADO o MIEMBRO). */
-async function validarUsuarioDelDepartamento(id: string, departamentoId: string, etiqueta: string) {
+/**
+ * Usuario activo del mismo departamento. Por defecto acepta ENCARGADO o MIEMBRO;
+ * con `soloEncargado` exige además que sea ENCARGADO (caso del revisor).
+ */
+async function validarUsuarioDelDepartamento(
+  id: string, departamentoId: string, etiqueta: string, soloEncargado = false
+) {
   if (!esUuid(id)) error(400, `${etiqueta} inválido`);
+  const roles: Array<'ENCARGADO' | 'MIEMBRO'> = soloEncargado ? ['ENCARGADO'] : ['ENCARGADO', 'MIEMBRO'];
   const [u] = await db.select({ id: usuarios.id }).from(usuarios)
     .where(and(
       eq(usuarios.id, id),
       eq(usuarios.activo, true),
       eq(usuarios.departamentoId, departamentoId),
-      inArray(usuarios.rol, ['ENCARGADO', 'MIEMBRO'])
+      inArray(usuarios.rol, roles)
     )).limit(1);
-  if (!u) error(400, `${etiqueta} debe ser un usuario activo de tu departamento`);
+  if (!u) {
+    error(400, soloEncargado
+      ? `${etiqueta} debe ser un encargado activo de tu departamento`
+      : `${etiqueta} debe ser un usuario activo de tu departamento`);
+  }
   return u.id;
 }
 
@@ -135,6 +145,8 @@ export async function opcionesParaCrear(actor: Encargado) {
   ]);
   return {
     responsables,
+    // El revisor solo puede ser un encargado del departamento (lo mismo que valida crearTareaObligatoria).
+    revisores: responsables.filter((u) => u.rol === 'ENCARGADO'),
     proyectos: proyectosActivos,
     prioridades: [...PRIORIDADES],
     dificultades: [...DIFICULTADES],
@@ -166,11 +178,11 @@ export async function crearTareaObligatoria(actor: Encargado, form: FormData) {
   if (!responsableTxt) error(400, 'El responsable es obligatorio');
   const responsableId = await validarUsuarioDelDepartamento(responsableTxt, actor.departamentoId, 'El responsable');
 
-  // Revisor opcional: si no se indica, revisa quien crea la tarea.
+  // Revisor opcional: si no se indica, revisa quien crea la tarea. Solo puede ser un encargado del departamento.
   const revisorTxt = campo(form, 'revisorId');
   let revisorId = actor.id;
   if (revisorTxt) {
-    revisorId = await validarUsuarioDelDepartamento(revisorTxt, actor.departamentoId, 'El revisor');
+    revisorId = await validarUsuarioDelDepartamento(revisorTxt, actor.departamentoId, 'El revisor', true);
     if (revisorId === responsableId) error(400, 'El revisor debe ser distinto del responsable');
   }
 

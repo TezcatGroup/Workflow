@@ -8,13 +8,14 @@ import { crearTareaObligatoria, exigirEncargado, opcionesParaCrear } from '$lib/
  * data (load):
  *   user               { id, nombre, rol, departamentoId }
  *   responsables       [{ id, nombre, rol }]   usuarios activos del departamento
+ *   revisores          [{ id, nombre, rol }]   solo los ENCARGADO activos del departamento
  *   proyectos          [{ id, nombre }]        proyectos activos del departamento
  *   prioridades        string[]                BAJA | MEDIA | ALTA | URGENTE
  *   dificultades       string[]                FACIL | INTERMEDIA | DIFICIL | EXPERTO
  *   prioridadPorDefecto / dificultadPorDefecto
  *
  * Acción ?/crear  (POST, application/x-www-form-urlencoded)
- *   campos: titulo*, descripcion, responsableId*, revisorId, fechaLimite* (YYYY-MM-DD),
+ *   campos: titulo*, descripcion, responsableId*, revisorId (solo encargado), fechaLimite* (YYYY-MM-DD),
  *           prioridad, dificultad, proyectoId, criterios (campo repetido, uno por criterio)
  *   éxito:  redirige (303) a /tareas/<id>
  *   error:  fail(status, { error: string, valores })  → `valores` trae lo que escribió la persona

@@ -276,8 +276,22 @@ try {
   }
   passed('TC-17', 'el encargado devuelve y finaliza en revisión; TERMINADA es final y la tarea obligatoria no genera XP, puntos ni rama');
 
+  /* ---------------- TC-18: el revisor debe ser un encargado del departamento ---------------- */
+  const antesRevisor = await totalTareasDe(encargado.id);
+  const conMiembroRevisor = await accion('/tareas/nueva', 'crear',
+    camposTarea(responsable.id, `Revisor miembro ${suffix}`, { revisorId: ajeno.id }), cEncargado);
+  assert.equal(conMiembroRevisor.status, 400, 'un MIEMBRO no puede ser revisor');
+  assert.equal(await totalTareasDe(encargado.id), antesRevisor, 'la tarea con revisor miembro no se guardó');
+
+  const encargado2 = await crearUsuario(adminCookie, 'jefe2', 'ENCARGADO', depA.id);
+  const tituloT4 = `Revisor encargado ${suffix}`;
+  assert.equal((await accion('/tareas/nueva', 'crear',
+    camposTarea(responsable.id, tituloT4, { revisorId: encargado2.id }), cEncargado)).status, 303);
+  assert.equal((await tareaPorTitulo(tituloT4)).revisorId, encargado2.id);
+  passed('TC-18', 'un MIEMBRO no puede ser revisor (400, sin guardar) y otro encargado del departamento sí');
+
   console.log(results.join('\n'));
-  console.log(`TOTAL: ${results.length}/9 APROBADOS`);
+  console.log(`TOTAL: ${results.length}/10 APROBADOS`);
 } catch (error) {
   console.error(results.join('\n'));
   console.error('FALLO:', error);
