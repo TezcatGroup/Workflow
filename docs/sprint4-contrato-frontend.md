@@ -43,7 +43,8 @@ Cada tarea enlaza a `/tareas/<id>`. El código visible de una tarea es `CORE-<nu
 `data`:
 
 - `user`
-- `responsables`: `[{ id, nombre, rol }]` usuarios activos del departamento (opciones para responsable y revisor)
+- `responsables`: `[{ id, nombre, rol }]` usuarios activos del departamento (opciones para el responsable)
+- `revisores`: `[{ id, nombre, rol }]` encargados activos del departamento (opciones para el revisor)
 - `proyectos`: `[{ id, nombre }]` proyectos activos del departamento
 - `prioridades`: `BAJA | MEDIA | ALTA | URGENTE` (por defecto `prioridadPorDefecto` = `MEDIA`)
 - `dificultades`: `FACIL | INTERMEDIA | DIFICIL | EXPERTO` (por defecto `dificultadPorDefecto` = `INTERMEDIA`)
@@ -56,7 +57,7 @@ Acción: `POST ?/crear` (`application/x-www-form-urlencoded`, funciona con `use:
 | `responsableId` | Sí | Usuario activo del mismo departamento |
 | `fechaLimite` | Sí | `YYYY-MM-DD` (se toma como fin de ese día) o `YYYY-MM-DDTHH:mm`. Debe ser futura |
 | `descripcion` | No | Hasta 5000 caracteres |
-| `revisorId` | No | Si se omite, revisa quien crea la tarea. No puede ser el responsable |
+| `revisorId` | No | Debe ser un `ENCARGADO` activo del departamento. Si se omite, revisa quien crea la tarea. No puede ser el responsable |
 | `prioridad` | No | Una de `prioridades` |
 | `dificultad` | No | Una de `dificultades` |
 | `proyectoId` | No | Proyecto activo del mismo departamento |
