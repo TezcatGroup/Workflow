@@ -9,6 +9,7 @@ export const handle: Handle = async ({ event, resolve }) => {
   const protegida = ruta === '/dashboard' || ruta.startsWith('/dashboard/') ||
     ruta === '/perfil' || ruta.startsWith('/perfil/') ||
     ruta === '/equipo' || ruta.startsWith('/equipo/') ||
+    ruta === '/tareas' || ruta.startsWith('/tareas/') ||
     ruta === '/admin' || ruta.startsWith('/admin/');
   if (protegida && !event.locals.user) redirect(303, '/login');
   if ((ruta === '/admin' || ruta.startsWith('/admin/')) && event.locals.user?.rol !== 'ADMIN') {

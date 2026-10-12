@@ -5,9 +5,10 @@
   let { user }: { user: { nombre: string; rol: string } } = $props();
 
   // Menú por rol: para agregar una sección, agrega una línea aquí.
-  const menus: Record<Rol, [texto: string, href: string][]> = {
+    const menus: Record<Rol, [texto: string, href: string][]> = {
     ADMIN: [
       ['Inicio', '/admin'],
+      ['Tareas', '/tareas'],
       ['Usuarios', '/admin/usuarios'],
       ['Departamentos', '/admin/departamentos'],
       ['Auditoría', '/admin/auditoria'],
@@ -15,14 +16,17 @@
     ],
     ENCARGADO: [
       ['Inicio', '/dashboard'],
+      ['Tareas', '/tareas'],
       ['Equipo', '/equipo'],
       ['Perfil', '/perfil']
     ],
     MIEMBRO: [
       ['Inicio', '/dashboard'],
+      ['Tareas', '/tareas'],
       ['Perfil', '/perfil']
     ]
   };
+
 
   const enlaces = $derived(menus[user.rol as Rol] ?? menus.MIEMBRO);
   // Cada rol tiene su "Inicio": /admin para ADMIN y /dashboard para los demás

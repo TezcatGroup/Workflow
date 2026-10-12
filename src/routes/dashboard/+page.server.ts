@@ -1,10 +1,21 @@
 import { redirect } from '@sveltejs/kit';
-import { and, asc, desc, eq, gte, lt, ne, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, lt, ne, sql } from 'drizzle-orm';
 import type { PageServerLoad } from './$types';
 import { db } from '$lib/server/db';
 import { movimientosXp, proyectos, tareas, usuarios } from '$lib/server/db/schema';
 
 type Prioridad = 'critica' | 'progreso' | 'cola';
+
+// Prioridades de la BD (BAJA, MEDIA, ALTA, URGENTE) que se consideran de alta prioridad.
+// 'critica' se conserva por compatibilidad con datos de prueba anteriores.
+const PRIORIDADES_ALTAS = ['URGENTE', 'ALTA', 'critica'];
+
+// La BD guarda la prioridad de la tarea; la vista usa 3 niveles visuales.
+function nivelPrioridad(valor: string | null): Prioridad {
+  if (valor && PRIORIDADES_ALTAS.includes(valor)) return 'critica';
+  if (valor === 'MEDIA' || valor === 'progreso') return 'progreso';
+  return 'cola';
+}
 type Tono = 'normal' | 'cian' | 'alerta';
 
 // ── Helpers de formato (ver TODOs: reglas de negocio de primera versión) ──
@@ -114,7 +125,7 @@ async function cargarDashboard(usuarioId: string, departamentoId: string | null)
   const [asignadas] = await db.select({ total: sql<number>`count(*)::int` }).from(tareas)
     .where(eq(tareas.responsableId, usuarioId));
   const [altaPrioridad] = await db.select({ total: sql<number>`count(*)::int` }).from(tareas)
-    .where(and(eq(tareas.responsableId, usuarioId), eq(tareas.prioridad, 'critica')));
+    .where(and(eq(tareas.responsableId, usuarioId), inArray(tareas.prioridad, PRIORIDADES_ALTAS)));
   const [enProceso] = await db.select({ total: sql<number>`count(*)::int` }).from(tareas)
     .where(and(eq(tareas.responsableId, usuarioId), eq(tareas.estado, 'EN_PROCESO')));
   const [proximaEnProceso] = await db.select({ titulo: tareas.titulo, fechaLimite: tareas.fechaLimite })
@@ -127,7 +138,7 @@ async function cargarDashboard(usuarioId: string, departamentoId: string | null)
   const [prioritarias] = await db.select({ total: sql<number>`count(*)::int` }).from(tareas)
     .where(and(
       eq(tareas.responsableId, usuarioId),
-      eq(tareas.prioridad, 'critica'),
+      inArray(tareas.prioridad, PRIORIDADES_ALTAS),
       ne(tareas.estado, 'TERMINADA')
     ));
   const proyectosActivos = await db.selectDistinct({ id: proyectos.id }).from(tareas)
@@ -161,8 +172,9 @@ async function cargarDashboard(usuarioId: string, departamentoId: string | null)
     .limit(4);
 
   const tareasVista = tareasPrioritarias.map((t) => ({
+    tareaId: t.id, // para enlazar al detalle: /tareas/<tareaId>
     id: codigoTarea(t.numero),
-    prioridad: (t.prioridad ?? 'cola') as Prioridad,
+    prioridad: nivelPrioridad(t.prioridad),
     vence: formatearVence(t.fechaLimite),
     titulo: t.titulo,
     detalle: t.descripcion ?? '',

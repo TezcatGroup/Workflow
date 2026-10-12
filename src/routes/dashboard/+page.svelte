@@ -258,7 +258,19 @@
                           <span class="material-symbols-outlined text-[12px]">schedule</span>{t.vence}
                         </span>
                       </span>
-                      <span class="mt-1 block truncate font-semibold">{t.titulo}</span>
+                      <span class="mt-1 block truncate font-semibold">
+                        {#if t.tareaId}
+                          <a
+                            href="/tareas/{t.tareaId}"
+                            title="Ver detalle de la tarea"
+                            class="transition-colors hover:text-tezcat-cyan hover:underline underline-offset-4"
+                          >
+                            {t.titulo}
+                          </a>
+                        {:else}
+                          {t.titulo}
+                        {/if}
+                      </span>
                       <span class="block truncate text-xs text-tezcat-textSecondary">{t.detalle}</span>
                     </span>
                   </label>
@@ -271,6 +283,15 @@
                       </span>
                     </p>
                     <p class="mt-1 font-mono text-[10px] text-tezcat-textSecondary">Impacto: {t.impacto}</p>
+                    {#if t.tareaId}
+                      <a
+                        href="/tareas/{t.tareaId}"
+                        class="mt-1.5 inline-flex items-center gap-1 font-mono text-[10px] font-semibold tracking-wider text-tezcat-cyan uppercase transition-colors hover:underline"
+                      >
+                        Ver detalle
+                        <span class="material-symbols-outlined text-xs">arrow_forward</span>
+                      </a>
+                    {/if}
                   </div>
                 </div>
               </li>
