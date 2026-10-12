@@ -7,7 +7,7 @@
   let { data, form }: { data: PageData; form: ActionData } = $props();
 
   // Contrato de datos y campos: ver +page.server.ts (propiedad del backend).
-  // Esta vista consume data.responsables / data.proyectos / prioridades /
+  // Esta vista consume data.responsables / data.revisores / data.proyectos / prioridades /
   // dificultades y restaura lo escrito desde form.valores si la creación falló.
 
   const etiqueta = 'mb-1.5 block font-mono text-[10px] tracking-wider text-tezcat-textSecondary uppercase';
@@ -147,7 +147,7 @@
               </div>
               <select id="revisorId" name="revisorId" class={campo}>
                 <option value="">Yo (por defecto)</option>
-                {#each data.responsables as r (r.id)}
+                {#each data.revisores as r (r.id)}
                   <option value={r.id} selected={v?.revisorId === r.id}>{r.nombre}</option>
                 {/each}
               </select>
