@@ -1,6 +1,12 @@
 import { fail, isHttpError, redirect, type Actions } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
-import { crearTareaObligatoria, exigirEncargado, opcionesParaCrear, registrarArchivo } from '$lib/server/tareas';
+import {
+  crearTareaObligatoria,
+  exigirEncargado,
+  MAX_ADJUNTO_BYTES,
+  opcionesParaCrear,
+  registrarArchivo
+} from '$lib/server/tareas';
 
 export const load: PageServerLoad = async ({ locals }) => {
   const encargado = exigirEncargado(locals.user);
@@ -31,9 +37,8 @@ export const actions: Actions = {
       .getAll('archivosGuia')
       .filter((item): item is File => item instanceof File && item.size > 0);
 
-    const LIMITE_BYTES = 10 * 1024 * 1024;
     for (const archivo of archivosSubidos) {
-      if (archivo.size > LIMITE_BYTES) {
+      if (archivo.size > MAX_ADJUNTO_BYTES) {
         return fail(400, {
           error: `El archivo "${archivo.name}" supera el límite permitido de 10 MB.`,
           valores: valoresDelFormulario(form)
@@ -45,17 +50,14 @@ export const actions: Actions = {
     try {
       tareaId = (await crearTareaObligatoria(encargado, form)).id;
 
-      // GUARDADO REAL EN POSTGRESQL Y DISCO (TW-08)
-      if (archivosSubidos.length > 0) {
-        for (const archivo of archivosSubidos) {
-          await registrarArchivo(tareaId, encargado.id, archivo);
-        }
+      for (const archivo of archivosSubidos) {
+        await registrarArchivo(encargado, tareaId, archivo);
       }
     } catch (e) {
       if (isHttpError(e)) return fail(e.status, { error: e.body.message, valores: valoresDelFormulario(form) });
       throw e;
     }
-    
+
     redirect(303, `/tareas/${tareaId}`);
   }
 };

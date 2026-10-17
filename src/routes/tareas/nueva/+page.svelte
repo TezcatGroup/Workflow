@@ -6,11 +6,6 @@
 
   let { data, form }: { data: PageData; form: ActionData } = $props();
 
-  // Contrato de datos y campos: ver +page.server.ts (propiedad del backend).
-  // Esta vista consume data.responsables / data.revisores / data.proyectos / prioridades /
-  // dificultades y restaura lo escrito desde form.valores si la creación falló.
-  // ubicacion: src>routes>tareas>nueva>+page.svelte
-
   const etiqueta = 'mb-1.5 block font-mono text-[10px] tracking-wider text-tezcat-textSecondary uppercase';
 
   const campo =
@@ -93,7 +88,7 @@
       </p>
       <h1 class="mt-1 text-2xl font-bold tracking-tight text-white">Nueva tarea obligatoria</h1>
       <p class="mt-1.5 text-xs text-tezcat-textSecondary">
-        Define responsable, fecha límite, criterios verificables y adjunta material de apoyo. Las tareas obligatorias no otorgan XP, puntos ni ramas.
+        Define al miembro responsable de la tarea, fecha límite, criterios verificables y adjunta material de apoyo. Las tareas obligatorias no otorgan XP, puntos ni ramas.
       </p>
     </div>
 
@@ -163,7 +158,7 @@
         <!-- Responsable / Revisor -->
         <div class="grid gap-5 sm:grid-cols-2">
           <div>
-            <label class={etiqueta} for="responsableId">Responsable *</label>
+            <label class={etiqueta} for="responsableId">Miembro Responsable *</label>
             <div class="relative rounded-xl shadow-sm">
               <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 text-tezcat-textMuted">
                 <span class="material-symbols-outlined text-lg">person</span>
