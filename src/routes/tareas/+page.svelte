@@ -5,9 +5,6 @@
 
   let { data }: { data: PageData } = $props();
 
-  // Contrato de datos: ver +page.server.ts (propiedad del backend).
-  // data.tareas ya viene ordenada por fecha límite (la más próxima primero).
-  // ubicacion: src>routes>tareas> +page.svelte
 
   const textoEstado: Record<string, string> = {
     ASIGNADA: 'Asignada', EN_PROCESO: 'En proceso', EN_REVISION: 'En revisión', TERMINADA: 'Terminada'
@@ -82,7 +79,7 @@
 
   const tareaChatActiva = $derived(data.tareas.find((t) => t.id === tareaChatActivaId) ?? null);
 
-  // Métricas derivadas del propio listado (no requieren cambios en el backend).
+  // Métricas derivadas del propio listado.
   const porEstado = $derived({
     asignadas: data.tareas.filter((t) => t.estado === 'ASIGNADA').length,
     enProceso: data.tareas.filter((t) => t.estado === 'EN_PROCESO').length,
@@ -173,7 +170,7 @@
           />
         </div>
 
-        <!-- Filtro por Miembro (Responsable) -->
+        <!-- Filtro por Miembro -->
         <div class="relative">
           <span class="material-symbols-outlined pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-base text-tezcat-textMuted">
             person_search

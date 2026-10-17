@@ -19,6 +19,9 @@ export const DIFICULTADES = ['FACIL', 'INTERMEDIA', 'DIFICIL', 'EXPERTO'] as con
 export const PRIORIDAD_POR_DEFECTO = 'MEDIA';
 export const DIFICULTAD_POR_DEFECTO = 'INTERMEDIA';
 
+export const MAX_ADJUNTO_BYTES = 10 * 1024 * 1024; // 10 MB centralizado (TW-08)
+const MAX_MENSAJE = 2000;
+
 const MAX_TITULO = 200;
 const MAX_DESCRIPCION = 5000;
 const MAX_CRITERIO = 255;
@@ -93,10 +96,6 @@ function validarCriterios(valores: FormDataEntryValue[]): string[] {
   return criterios;
 }
 
-/**
- * Usuario activo del mismo departamento. Por defecto acepta ENCARGADO o MIEMBRO;
- * con `soloEncargado` exige además que sea ENCARGADO (caso del revisor).
- */
 async function validarUsuarioDelDepartamento(
   id: string, departamentoId: string, etiqueta: string, soloEncargado = false
 ) {
@@ -218,11 +217,10 @@ export async function crearTareaObligatoria(actor: Encargado, form: FormData) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Estados y transiciones (TW-05)                                      */
+/* Estados, permisos y transiciones (TW-05 y TW-07)                    */
 /* ------------------------------------------------------------------ */
 
 export type EstadoTarea = (typeof estadoTarea.enumValues)[number];
-
 type Quien = 'RESPONSABLE' | 'REVISOR';
 
 export const TRANSICIONES: Record<EstadoTarea, Partial<Record<EstadoTarea, Quien>>> = {
@@ -243,14 +241,14 @@ function esEncargadoDelDepartamento(actor: Actor, t: DatosPermiso): boolean {
   return actor.rol === 'ENCARGADO' && actor.departamentoId !== null && actor.departamentoId === t.departamentoId;
 }
 
-function puedeVer(actor: Actor, t: DatosPermiso): boolean {
+export function puedeVer(actor: Actor, t: DatosPermiso): boolean {
   if (actor.rol === 'ADMIN') return true;
   if (actor.id === t.creadoPorId || actor.id === t.responsableId || actor.id === t.revisorId) return true;
   return esEncargadoDelDepartamento(actor, t);
 }
 
 function cumpleRol(actor: Actor, quien: Quien, t: DatosPermiso): boolean {
-  if (actor.rol === 'ADMIN') return false; 
+  if (actor.rol === 'ADMIN') return false;
   if (quien === 'RESPONSABLE') return actor.id === t.responsableId;
   return actor.id === t.revisorId || esEncargadoDelDepartamento(actor, t);
 }
@@ -261,7 +259,7 @@ function transicionesPermitidas(actor: Actor, estado: EstadoTarea, t: DatosPermi
     .map(([destino]) => destino);
 }
 
-async function cargarTarea(id: string) {
+export async function cargarTarea(id: string) {
   if (!esUuid(id)) error(404, 'Tarea inexistente');
   const [tarea] = await db.select().from(tareas).where(eq(tareas.id, id)).limit(1);
   if (!tarea) error(404, 'Tarea inexistente');
@@ -278,6 +276,24 @@ export async function cambiarEstado(actor: Actor, tareaId: string, destinoTxt: s
   const quien = TRANSICIONES[tarea.estado][destino];
   if (!quien) error(400, `No se puede pasar de ${tarea.estado} a ${destino}`);
   if (!cumpleRol(actor, quien, tarea)) error(403, 'No tienes permiso para este cambio de estado');
+
+  // Candado de negocio TW-07: validar checklist antes de avanzar a EN_REVISION o TERMINADA
+  if (destino === 'EN_REVISION' || destino === 'TERMINADA') {
+    const criterios = await db
+      .select({
+        completado: tareaCriterios.completado,
+        verificadoEncargado: tareaCriterios.verificadoEncargado
+      })
+      .from(tareaCriterios)
+      .where(eq(tareaCriterios.tareaId, tarea.id));
+
+    if (destino === 'EN_REVISION' && criterios.some((c) => !c.completado)) {
+      error(400, 'Debes marcar todos los criterios de aceptación antes de enviar la tarea a revisión.');
+    }
+    if (destino === 'TERMINADA' && criterios.some((c) => !c.verificadoEncargado)) {
+      error(400, 'Como encargado o revisor, debes verificar todos los criterios antes de aprobar la tarea.');
+    }
+  }
 
   await db.transaction(async (tx) => {
     const actualizadas = await tx.update(tareas)
@@ -297,7 +313,7 @@ export async function cambiarEstado(actor: Actor, tareaId: string, destinoTxt: s
 }
 
 /* ------------------------------------------------------------------ */
-/* Detalle de una tarea (TW-06)                                        */
+/* Detalle de una tarea unificado (TW-06, TW-07, TW-08 y TW-09)        */
 /* ------------------------------------------------------------------ */
 
 export async function obtenerDetalle(actor: Actor, tareaId: string) {
@@ -307,7 +323,7 @@ export async function obtenerDetalle(actor: Actor, tareaId: string) {
   const idsUsuarios = [tarea.creadoPorId, tarea.responsableId, tarea.revisorId]
     .filter((id): id is string => id !== null);
 
-  const [personas, proyecto, criterios, archivos, eventos] = await Promise.all([
+  const [personas, proyecto, criterios, archivosBD, eventos, comentarios] = await Promise.all([
     idsUsuarios.length > 0
       ? db.select({ id: usuarios.id, nombre: usuarios.nombre }).from(usuarios)
         .where(inArray(usuarios.id, idsUsuarios))
@@ -316,20 +332,49 @@ export async function obtenerDetalle(actor: Actor, tareaId: string) {
       ? db.select({ id: proyectos.id, nombre: proyectos.nombre }).from(proyectos)
         .where(eq(proyectos.id, tarea.proyectoId)).limit(1)
       : Promise.resolve([]),
-    db.select({ id: tareaCriterios.id, descripcion: tareaCriterios.descripcion, completado: tareaCriterios.completado })
-      .from(tareaCriterios).where(eq(tareaCriterios.tareaId, tarea.id)).orderBy(asc(tareaCriterios.creadoEn)),
     db.select({
-      id: tareaArchivos.id, nombre: tareaArchivos.nombre,
-      mimeType: tareaArchivos.mimeType, tamanoBytes: tareaArchivos.tamanoBytes
-    }).from(tareaArchivos).where(eq(tareaArchivos.tareaId, tarea.id)).orderBy(asc(tareaArchivos.creadoEn)),
+      id: tareaCriterios.id,
+      descripcion: tareaCriterios.descripcion,
+      completado: tareaCriterios.completado,
+      verificadoEncargado: tareaCriterios.verificadoEncargado
+    }).from(tareaCriterios).where(eq(tareaCriterios.tareaId, tarea.id)).orderBy(asc(tareaCriterios.creadoEn)),
+    db.select({
+      id: tareaArchivos.id,
+      nombre: tareaArchivos.nombre,
+      mimeType: tareaArchivos.mimeType,
+      tamanoBytes: tareaArchivos.tamanoBytes,
+      ruta: tareaArchivos.ruta,
+      subidoPorId: tareaArchivos.subidoPorId,
+      creadoEn: tareaArchivos.creadoEn,
+      subidoPorNombre: usuarios.nombre,
+      subidoPorRol: usuarios.rol
+    })
+      .from(tareaArchivos)
+      .leftJoin(usuarios, eq(tareaArchivos.subidoPorId, usuarios.id))
+      .where(eq(tareaArchivos.tareaId, tarea.id))
+      .orderBy(asc(tareaArchivos.creadoEn)),
     db.select({
       id: tareaEventos.id, tipo: tareaEventos.tipo, detalle: tareaEventos.detalle,
       creadoEn: tareaEventos.creadoEn, actorNombre: usuarios.nombre
     }).from(tareaEventos).leftJoin(usuarios, eq(tareaEventos.actorId, usuarios.id))
-      .where(eq(tareaEventos.tareaId, tarea.id)).orderBy(desc(tareaEventos.creadoEn))
+      .where(eq(tareaEventos.tareaId, tarea.id)).orderBy(desc(tareaEventos.creadoEn)),
+    obtenerComentariosBD(tarea.id)
   ]);
 
   const persona = (id: string | null) => personas.find((p) => p.id === id) ?? null;
+
+  const archivos = archivosBD.map((a) => ({
+    id: a.id,
+    nombre: a.nombre,
+    subidoPorId: a.subidoPorId,
+    mimeType: a.mimeType ?? 'application/octet-stream',
+    tamanoBytes: a.tamanoBytes ?? 0,
+    categoria: (a.subidoPorRol === 'ENCARGADO' ? 'RECURSO_GUIA' : 'EVIDENCIA') as 'RECURSO_GUIA' | 'EVIDENCIA',
+    subidoPorNombre: a.subidoPorNombre ?? 'Usuario',
+    subidoPorRol: a.subidoPorRol ?? 'MIEMBRO',
+    creadoEn: a.creadoEn,
+    urlDescarga: a.ruta
+  }));
 
   return {
     tarea: {
@@ -341,6 +386,7 @@ export async function obtenerDetalle(actor: Actor, tareaId: string) {
       estado: tarea.estado,
       prioridad: tarea.prioridad,
       dificultad: tarea.dificultad,
+      departamentoId: tarea.departamentoId,
       fechaLimite: tarea.fechaLimite,
       creadoEn: tarea.creadoEn,
       actualizadoEn: tarea.actualizadoEn
@@ -351,13 +397,14 @@ export async function obtenerDetalle(actor: Actor, tareaId: string) {
     proyecto: proyecto[0] ?? null,
     criterios,
     archivos,
+    comentarios,
     eventos,
     transicionesPermitidas: transicionesPermitidas(actor, tarea.estado, tarea)
   };
 }
 
 /* ------------------------------------------------------------------ */
-/* Lista de tareas                                                    */
+/* Lista de tareas (TW-03 y TW-09)                 */
 /* ------------------------------------------------------------------ */
 
 export async function listarMisTareas(actor: Actor) {
@@ -367,7 +414,7 @@ export async function listarMisTareas(actor: Actor) {
       ? eq(tareas.departamentoId, actor.departamentoId)
       : eq(tareas.responsableId, actor.id);
 
-  return db.select({
+  const tareasBase = await db.select({
     id: tareas.id,
     numero: tareas.numero,
     titulo: tareas.titulo,
@@ -381,75 +428,241 @@ export async function listarMisTareas(actor: Actor) {
     .where(filtro)
     .orderBy(asc(tareas.fechaLimite))
     .limit(200);
+
+  if (tareasBase.length === 0) return [];
+
+  // Una sola consulta agrupada para todos los comentarios de las tareas listadas (evita N+1)
+  const idsTareas = tareasBase.map((t) => t.id);
+  const todosLosMensajes = await db
+    .select({
+      id: tareaMensajes.id,
+      tareaId: tareaMensajes.tareaId,
+      autorId: tareaMensajes.autorId,
+      contenido: tareaMensajes.contenido,
+      creadoEn: tareaMensajes.creadoEn,
+      autorNombre: usuarios.nombre,
+      autorRol: usuarios.rol
+    })
+    .from(tareaMensajes)
+    .leftJoin(usuarios, eq(tareaMensajes.autorId, usuarios.id))
+    .where(inArray(tareaMensajes.tareaId, idsTareas))
+    .orderBy(asc(tareaMensajes.creadoEn));
+
+  const mensajesPorTarea = new Map<string, Array<{
+    id: string;
+    tareaId: string;
+    autorId: string;
+    autorNombre: string;
+    autorRol: string;
+    contenido: string;
+    creadoEn: Date;
+  }>>();
+
+  for (const m of todosLosMensajes) {
+    const lista = mensajesPorTarea.get(m.tareaId) ?? [];
+    lista.push({
+      id: m.id,
+      tareaId: m.tareaId,
+      autorId: m.autorId ?? '',
+      autorNombre: m.autorNombre ?? 'Usuario',
+      autorRol: m.autorRol ?? 'MIEMBRO',
+      contenido: m.contenido,
+      creadoEn: m.creadoEn
+    });
+    mensajesPorTarea.set(m.tareaId, lista);
+  }
+
+  return tareasBase.map((t) => {
+    const comentarios = mensajesPorTarea.get(t.id) ?? [];
+    return {
+      ...t,
+      totalComentarios: comentarios.length,
+      comentariosRecientes: comentarios
+    };
+  });
 }
 
-// =========================================================================
-// TW-07: CHECKLIST INTERACTIVO
-// =========================================================================
-export async function toggleCriterioBD(criterioId: string, modo: 'RESPONSABLE' | 'ENCARGADO') {
-  const actual = await db.select().from(tareaCriterios).where(eq(tareaCriterios.id, criterioId)).then(r => r[0]);
-  if (!actual) throw new Error("Criterio no encontrado");
+/* ------------------------------------------------------------------ */
+/* TW-07: Checklist Interactivo con Permisos y Doble Columna           */
+/* ------------------------------------------------------------------ */
 
-  // Al no estar verificadoEncargado en tu schema, reutilizamos el mismo campo completado para ambos roles
-  await db.update(tareaCriterios)
-    .set({ completado: !actual.completado })
-    .where(eq(tareaCriterios.id, criterioId));
-}
-
-// =========================================================================
-// TW-08: GESTIÓN DE ARCHIVOS Y EVIDENCIAS
-// =========================================================================
-export async function registrarArchivo(
-  tareaId: string, 
-  subidoPorId: string, 
-  archivoFile: File | null = null, 
-  enlaceUrl: string = '', 
-  enlaceTitulo: string = ''
+export async function toggleCriterioBD(
+  actor: Actor,
+  tareaId: string,
+  criterioId: string,
+  modo: 'RESPONSABLE' | 'ENCARGADO'
 ) {
+  const tarea = await cargarTarea(tareaId);
+  if (!puedeVer(actor, tarea)) error(403, 'No tienes acceso a esta tarea');
+  if (actor.rol === 'ADMIN') error(403, 'El administrador solo tiene permisos de lectura');
+  if (!esUuid(criterioId)) error(400, 'Identificador de criterio inválido');
+
+  const [actual] = await db
+    .select()
+    .from(tareaCriterios)
+    .where(and(eq(tareaCriterios.id, criterioId), eq(tareaCriterios.tareaId, tarea.id)))
+    .limit(1);
+
+  if (!actual) error(404, 'El criterio no pertenece a esta tarea');
+
+  if (modo === 'ENCARGADO') {
+    if (!cumpleRol(actor, 'REVISOR', tarea)) {
+      error(403, 'Solo el encargado o revisor puede verificar criterios');
+    }
+    if (tarea.estado !== 'EN_REVISION') {
+      error(400, 'La verificación del encargado solo se realiza cuando la tarea está en revisión');
+    }
+    await db
+      .update(tareaCriterios)
+      .set({ verificadoEncargado: !actual.verificadoEncargado })
+      .where(eq(tareaCriterios.id, criterioId));
+  } else {
+    const puedeAvanzar = cumpleRol(actor, 'RESPONSABLE', tarea) || cumpleRol(actor, 'REVISOR', tarea);
+    if (!puedeAvanzar) {
+      error(403, 'Solo el responsable asignado puede marcar el avance del checklist');
+    }
+    if (tarea.estado !== 'ASIGNADA' && tarea.estado !== 'EN_PROCESO') {
+      error(400, 'El checklist de avance solo se modifica cuando la tarea está asignada o en proceso');
+    }
+    await db
+      .update(tareaCriterios)
+      .set({ completado: !actual.completado })
+      .where(eq(tareaCriterios.id, criterioId));
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* TW-08: Gestión Segura de Archivos y Evidencias                     */
+/* ------------------------------------------------------------------ */
+
+function sanitizarNombreArchivo(nombreOriginal: string): string {
+  const base = path.basename(nombreOriginal)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9._-]/g, '_')
+    .replace(/_{2,}/g, '_');
+  return base.slice(0, 180) || 'archivo';
+}
+
+export async function registrarArchivo(
+  actor: Actor,
+  tareaId: string,
+  archivoFile: File | null = null,
+  enlaceUrl = '',
+  enlaceTitulo = ''
+) {
+  const tarea = await cargarTarea(tareaId);
+  if (!puedeVer(actor, tarea)) error(403, 'No tienes acceso a esta tarea');
+  if (actor.rol === 'ADMIN') error(403, 'El administrador no puede adjuntar archivos');
+  if (tarea.estado === 'TERMINADA') error(400, 'No se pueden adjuntar archivos a una tarea terminada');
+
   if (enlaceUrl) {
+    let urlValida: URL;
+    try {
+      urlValida = new URL(enlaceUrl);
+    } catch {
+      error(400, 'El enlace proporcionado no es una URL válida');
+    }
+    if (urlValida.protocol !== 'http:' && urlValida.protocol !== 'https:') {
+      error(400, 'El enlace debe comenzar con http:// o https://');
+    }
     await db.insert(tareaArchivos).values({
-      tareaId,
-      subidoPorId,
-      nombre: enlaceTitulo || enlaceUrl,
+      tareaId: tarea.id,
+      subidoPorId: actor.id,
+      nombre: (enlaceTitulo || enlaceUrl).slice(0, 255),
       mimeType: 'text/uri-list',
       tamanoBytes: 0,
-      ruta: enlaceUrl
+      ruta: urlValida.toString()
     });
     return;
   }
 
   if (archivoFile) {
+    if (archivoFile.size > MAX_ADJUNTO_BYTES) {
+      error(400, `El archivo "${archivoFile.name}" supera el límite permitido de 10 MB.`);
+    }
+
     const buffer = Buffer.from(await archivoFile.arrayBuffer());
-    const uploadDir = path.resolve('uploads', tareaId);
+    const baseUploads = path.resolve('uploads');
+    const uploadDir = path.resolve(baseUploads, tarea.id);
+    if (!uploadDir.startsWith(baseUploads)) {
+      error(403, 'Ruta de almacenamiento inválida');
+    }
+
     await fs.mkdir(uploadDir, { recursive: true });
-    
-    const safeName = `${crypto.randomBytes(4).toString('hex')}_${archivoFile.name}`;
-    const filePath = path.join(uploadDir, safeName);
-    
+
+    const nombreLimpio = sanitizarNombreArchivo(archivoFile.name);
+    const safeName = `${crypto.randomBytes(4).toString('hex')}_${nombreLimpio}`;
+    const filePath = path.resolve(uploadDir, safeName);
+
+    if (!filePath.startsWith(uploadDir)) {
+      error(403, 'Nombre de archivo no permitido');
+    }
+
     await fs.writeFile(filePath, buffer);
 
     await db.insert(tareaArchivos).values({
-      tareaId,
-      subidoPorId,
-      nombre: archivoFile.name,
+      tareaId: tarea.id,
+      subidoPorId: actor.id,
+      nombre: path.basename(archivoFile.name).slice(0, 255),
       mimeType: archivoFile.type || 'application/octet-stream',
       tamanoBytes: archivoFile.size,
-      ruta: `/uploads/${tareaId}/${safeName}`
+      ruta: `/uploads/${tarea.id}/${safeName}`
     });
   }
 }
 
-export async function eliminarArchivoBD(archivoId: string) {
-  await db.delete(tareaArchivos).where(eq(tareaArchivos.id, archivoId));
+export async function eliminarArchivoBD(actor: Actor, tareaId: string, archivoId: string) {
+  const tarea = await cargarTarea(tareaId);
+  if (!puedeVer(actor, tarea)) error(403, 'No tienes acceso a esta tarea');
+  if (actor.rol === 'ADMIN') error(403, 'El administrador no puede eliminar archivos');
+  if (!esUuid(archivoId)) error(400, 'Identificador de archivo inválido');
+
+  const [archivo] = await db
+    .select()
+    .from(tareaArchivos)
+    .where(and(eq(tareaArchivos.id, archivoId), eq(tareaArchivos.tareaId, tarea.id)))
+    .limit(1);
+
+  if (!archivo) error(404, 'El archivo no existe en esta tarea');
+
+  const esAutor = archivo.subidoPorId === actor.id;
+  const esJefe = cumpleRol(actor, 'REVISOR', tarea);
+  if (!esAutor && !esJefe) {
+    error(403, 'Solo quien subió el archivo o el encargado puede eliminarlo');
+  }
+
+  await db.delete(tareaArchivos).where(eq(tareaArchivos.id, archivo.id));
+
+  // Borrar también el archivo físico del disco si está en /uploads/
+  if (archivo.ruta.startsWith('/uploads/')) {
+    const relativo = archivo.ruta.replace(/^\/uploads\//, '');
+    const baseUploads = path.resolve('uploads');
+    const rutaFisica = path.resolve(baseUploads, relativo);
+    if (rutaFisica.startsWith(baseUploads)) {
+      await fs.unlink(rutaFisica).catch(() => {});
+    }
+  }
 }
 
-// =========================================================================
-// TW-09: CONVERSACIÓN CONTEXTUAL
-// =========================================================================
-export async function agregarComentarioBD(tareaId: string, autorId: string, contenido: string) {
+/* ------------------------------------------------------------------ */
+/* TW-09: Conversación Contextual con Permisos                        */
+/* ------------------------------------------------------------------ */
+
+export async function agregarComentarioBD(actor: Actor, tareaId: string, contenidoTxt: string) {
+  const tarea = await cargarTarea(tareaId);
+  if (!puedeVer(actor, tarea)) error(403, 'No tienes acceso a esta tarea');
+  if (actor.rol === 'ADMIN') error(403, 'El administrador tiene acceso de solo lectura');
+
+  const contenido = contenidoTxt.trim();
+  if (!contenido) error(400, 'Escribe un mensaje antes de enviar.');
+  if (contenido.length > MAX_MENSAJE) {
+    error(400, `El comentario no puede superar los ${MAX_MENSAJE} caracteres.`);
+  }
+
   await db.insert(tareaMensajes).values({
-    tareaId,
-    autorId,
+    tareaId: tarea.id,
+    autorId: actor.id,
     contenido
   });
 }
@@ -479,4 +692,38 @@ export async function obtenerComentariosBD(tareaId: string) {
     contenido: c.contenido,
     creadoEn: c.creadoEn
   }));
+}
+
+// =========================================================================
+// ELIMINACIÓN DE TAREA 
+// =========================================================================
+export async function eliminarTarea(actor: Actor, tareaId: string) {
+  // 1. Cargar la tarea y verificar acceso
+  const tarea = await cargarTarea(tareaId);
+  if (!puedeVer(actor, tarea)) {
+    error(403, 'No tienes acceso a esta tarea');
+  }
+
+  // 2. Candado de permisos: Solo el Encargado pueden borrarla
+  const esJefeOAutor =
+    actor.rol === 'ADMIN' ||
+    (actor.rol === 'ENCARGADO' && actor.departamentoId === tarea.departamentoId) ||
+    actor.id === tarea.creadoPorId;
+
+  if (!esJefeOAutor) {
+    error(403, 'Solo el encargado del departamento o quien creó la tarea puede eliminarla');
+  }
+
+  // 3. Eliminar los archivos adjuntos
+  try {
+    const uploadDir = path.resolve('uploads', tarea.id);
+    await fs.rm(uploadDir, { recursive: true, force: true });
+  } catch {
+    // Si la carpeta no existía en disco, continúa la eliminación en BD sin interrumpir
+  }
+
+  // 4. Elimina la tarea en PostgreSQL
+  await db.delete(tareas).where(eq(tareas.id, tarea.id));
+
+  return { id: tarea.id, eliminada: true };
 }

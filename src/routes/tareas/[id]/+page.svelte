@@ -7,15 +7,14 @@
 
   let { data, form }: { data: PageData; form: ActionData } = $props();
 
-  // Contrato de datos y acciones: ver +page.server.ts (propiedad del backend).
-  // transicionesPermitidas define qué botones de avance puede usar esta persona;
-  // vacío = solo lectura. El backend valida permisos y transiciones; la vista solo presenta.
-  // src>routes>tareas>[id]>+page.svelte
   const flujoEstados = ['ASIGNADA', 'EN_PROCESO', 'EN_REVISION', 'TERMINADA'];
   const indiceEstado = $derived(flujoEstados.indexOf(data.tarea.estado));
 
   const textoEstado: Record<string, string> = {
-    ASIGNADA: 'Asignada', EN_PROCESO: 'En proceso', EN_REVISION: 'En revisión', TERMINADA: 'Terminada'
+    ASIGNADA: 'Asignada',
+    EN_PROCESO: 'En proceso',
+    EN_REVISION: 'En revisión',
+    TERMINADA: 'Terminada'
   };
 
   const claseEstado: Record<string, string> = {
@@ -26,7 +25,10 @@
   };
 
   const iconoEstado: Record<string, string> = {
-    ASIGNADA: 'assignment_ind', EN_PROCESO: 'progress_activity', EN_REVISION: 'rate_review', TERMINADA: 'task_alt'
+    ASIGNADA: 'assignment_ind',
+    EN_PROCESO: 'progress_activity',
+    EN_REVISION: 'rate_review',
+    TERMINADA: 'task_alt'
   };
 
   const clasePrioridad: Record<string, string> = {
@@ -37,15 +39,20 @@
   };
 
   const iconoBoton: Record<string, string> = {
-    EN_PROCESO: 'play_arrow', EN_REVISION: 'rate_review', TERMINADA: 'task_alt'
+    EN_PROCESO: 'play_arrow',
+    EN_REVISION: 'rate_review',
+    TERMINADA: 'task_alt'
   };
 
   const iconoEvento: Record<string, string> = {
-    TAREA_CREADA: 'add_task', CAMBIO_ESTADO: 'sync_alt'
+    TAREA_CREADA: 'add_task',
+    CAMBIO_ESTADO: 'sync_alt'
   };
 
   function textoBoton(destino: string): string {
-    if (destino === 'EN_PROCESO') return data.tarea.estado === 'EN_REVISION' ? 'Devolver a en proceso' : 'Iniciar tarea';
+    if (destino === 'EN_PROCESO') {
+      return data.tarea.estado === 'EN_REVISION' ? 'Devolver a en proceso' : 'Iniciar tarea';
+    }
     if (destino === 'EN_REVISION') return 'Enviar a revisión';
     if (destino === 'TERMINADA') return 'Marcar como terminada';
     return textoEstado[destino] ?? destino;
@@ -79,13 +86,12 @@
       .join('');
   }
 
-  // ¿Venció la fecha límite sin terminar la tarea?
   const vencida = $derived(
     data.tarea.estado !== 'TERMINADA' && new Date(data.tarea.fechaLimite).getTime() < Date.now()
   );
 
   // =========================================================================
-  // LÓGICA TW-07: Progreso del Checklist de Criterios (Responsable y Encargado)
+  // LÓGICA TW-07: Progreso del Checklist (Responsable vs. Encargado)
   // =========================================================================
   const totalCriterios = $derived(data.criterios.length);
   const criteriosCompletados = $derived(data.criterios.filter((c) => c.completado).length);
@@ -100,17 +106,21 @@
 
   const esResponsable = $derived(data.user.id === data.responsable?.id || data.user.rol === 'MIEMBRO');
   const esEncargadoORevisor = $derived(data.user.rol === 'ENCARGADO' || data.user.id === data.revisor?.id);
+  const puedeEliminar = $derived(
+    data.user.rol === 'ADMIN' ||
+    (data.user.rol === 'ENCARGADO' && data.user.departamentoId === data.tarea.departamentoId) ||
+    data.user.id === data.creador?.id
+  );
 
-  // ¿Puede el responsable marcar checks ahora?
+  // El responsable marca avance durante ASIGNADA o EN_PROCESO
   const puedeMarcarAvance = $derived(
     (esResponsable || esEncargadoORevisor) &&
       (data.tarea.estado === 'ASIGNADA' || data.tarea.estado === 'EN_PROCESO')
   );
 
-  // ¿Puede el encargado verificar manualmente en revisión?
+  // El encargado verifica de forma independiente durante EN_REVISION
   const puedeVerificarRevision = $derived(esEncargadoORevisor && data.tarea.estado === 'EN_REVISION');
 
-  // Candado para los botones de transición de estado según TW-07
   function transicionBloqueada(destino: string): { bloqueado: boolean; motivo: string } {
     if (destino === 'EN_REVISION' && porcentajeCompletado < 100) {
       return {
@@ -142,13 +152,12 @@
   }
 
   // =========================================================================
-  // LÓGICA TW-09: Conversación Contextual dentro de la Tarea
+  // LÓGICA TW-09: Conversación Contextual
   // =========================================================================
   let nuevoComentario = $state('');
   let enviandoComentario = $state(false);
   let contenedorChatRef = $state<HTMLDivElement | null>(null);
 
-  // Auto-scroll al último mensaje cuando cambia la lista de comentarios
   $effect(() => {
     const _total = data.comentarios?.length ?? 0;
     if (contenedorChatRef && _total > 0) {
@@ -156,7 +165,6 @@
     }
   });
 
-  // Polling ligero cada 12 segundos para mantener sincronizada la conversación (TW-09)
   $effect(() => {
     const intervalo = setInterval(() => {
       if (document.visibilityState === 'visible') {
@@ -176,8 +184,8 @@
   <EncabezadoApp user={data.user} />
 
   <main class="mx-auto max-w-5xl space-y-6 px-4 py-8 sm:py-10">
-    <!-- Encabezado -->
-    <div>
+    <!-- Encabezado superior con botón de volver y botón de eliminación -->
+    <div class="flex flex-wrap items-center justify-between gap-4">
       <a
         href="/tareas"
         class="inline-flex items-center gap-1 text-xs font-semibold text-tezcat-cyan transition-colors hover:text-tezcat-cyanHover"
@@ -186,7 +194,33 @@
         Volver a tareas
       </a>
 
-      <div class="mt-4 flex flex-wrap items-center gap-2">
+      <!-- Botón de eliminación con confirmación (solo visible para Encargado / Creador / Admin) -->
+      {#if puedeEliminar}
+        <form
+          method="POST"
+          action="?/eliminarTarea"
+          use:enhance={({ cancel }) => {
+            const confirmar = confirm(
+              `¿Estás seguro de que deseas eliminar permanentemente la tarea "${data.tarea.titulo}"?\n\nEsta acción eliminará todos sus criterios, archivos adjuntos en disco y mensajes del chat sin posibilidad de recuperarlos.`
+            );
+            if (!confirmar) cancel();
+          }}
+        >
+          <button
+            type="submit"
+            class="inline-flex items-center gap-1.5 rounded-xl border border-tezcat-danger/40 bg-tezcat-danger/10 px-3 py-1.5 font-mono text-[11px] font-bold tracking-wider text-red-300 uppercase transition-all hover:border-tezcat-danger/70 hover:bg-tezcat-danger/20 active:scale-95"
+            title="Eliminar tarea permanentemente"
+          >
+            <span class="material-symbols-outlined text-sm text-red-400">delete_forever</span>
+            Eliminar tarea
+          </button>
+        </form>
+      {/if}
+    </div>
+
+    <!-- Título y estados -->
+    <div>
+      <div class="flex flex-wrap items-center gap-2">
         <span class="rounded-md border border-tezcat-border bg-tezcat-surfaceAlt px-2 py-0.5 font-mono text-[11px] font-semibold tracking-wider text-tezcat-cyan uppercase">
           CORE-{data.tarea.numero ?? '?'}
         </span>
@@ -228,7 +262,7 @@
       </ol>
     </div>
 
-    <!-- Mensajes -->
+    <!-- Alertas y mensajes -->
     {#if form?.error}
       <div role="alert" class="flex items-start gap-2.5 rounded-lg border border-tezcat-danger/40 bg-tezcat-danger/10 p-3 text-xs text-red-300">
         <span class="material-symbols-outlined shrink-0 text-base">error</span>
@@ -241,7 +275,7 @@
       </div>
     {/if}
 
-    <!-- Acciones de avance (TW-05 + Candado de Criterios TW-07) -->
+    <!-- Acciones de transición de estado (TW-05 y TW-07) -->
     {#if data.transicionesPermitidas.length > 0}
       <section class="rounded-2xl border border-tezcat-border/80 bg-tezcat-card/90 p-5 shadow-2xl backdrop-blur-md">
         <div class="flex flex-wrap items-center justify-between gap-2">
@@ -294,7 +328,7 @@
       </section>
     {/if}
 
-    <!-- Contenido -->
+    <!-- Contenedor en 2 columnas -->
     <div class="grid gap-6 lg:grid-cols-3">
       <!-- Columna principal -->
       <div class="space-y-6 lg:col-span-2">
@@ -306,23 +340,21 @@
           {/if}
         </Panel>
 
-        <!-- =============================================================== -->
-        <!-- TW-07: CHECKLIST INTERACTIVO DE CRITERIOS DE ACEPTACIÓN         -->
-        <!-- =============================================================== -->
+        <!-- TW-07: Checklist de Criterios -->
         <Panel
           titulo="Criterios de aceptación (Checklist · TW-07)"
           descripcion={puedeVerificarRevision
-            ? 'Modo revisor: marca cada criterio conforme compruebes manualmente que fue cumplido.'
+            ? 'Modo revisor: verifica manualmente cada criterio conforme compruebes su cumplimiento antes de aprobar.'
             : 'Marca cada condición conforme avances para habilitar el envío a revisión.'}
         >
           {#if data.criterios.length === 0}
             <p class="text-sm text-tezcat-textMuted">Esta tarea no tiene criterios registrados.</p>
           {:else}
-            <!-- Barra de progreso del Checklist -->
+            <!-- Barra de progreso -->
             <div class="mb-4 rounded-xl border border-tezcat-border bg-tezcat-bg p-3.5">
               <div class="mb-1.5 flex flex-wrap items-center justify-between gap-2 font-mono text-[11px]">
                 <span class="text-tezcat-textSecondary uppercase">
-                  Avance del responsable: <strong class="text-tezcat-cyan">{criteriosCompletados}/{totalCriterios}</strong> ({porcentajeCompletado}%)
+                  Avance del Miembro: <strong class="text-tezcat-cyan">{criteriosCompletados}/{totalCriterios}</strong> ({porcentajeCompletado}%)
                 </span>
                 {#if data.tarea.estado === 'EN_REVISION' || data.tarea.estado === 'TERMINADA'}
                   <span class="text-violet-300 uppercase">
@@ -333,7 +365,7 @@
               <div class="h-2 overflow-hidden rounded-full bg-tezcat-surfaceAlt">
                 <div
                   class="h-full bg-linear-to-r from-tezcat-cyan to-emerald-400 transition-all duration-300"
-                  style="width: {porcentajeCompletado}%"
+                  style="width: {data.tarea.estado === 'EN_REVISION' || data.tarea.estado === 'TERMINADA' ? porcentajeVerificado : porcentajeCompletado}%"
                 ></div>
               </div>
             </div>
@@ -341,7 +373,7 @@
             <ul class="space-y-2.5">
               {#each data.criterios as c (c.id)}
                 <li class="flex flex-col justify-between gap-3 rounded-xl border border-tezcat-border bg-tezcat-bg px-3.5 py-3 text-sm sm:flex-row sm:items-center">
-                  <!-- Check del Responsable (Miembro) -->
+                  <!-- Check de avance (Responsable) -->
                   <form method="POST" action="?/toggleCriterio" use:enhance class="flex min-w-0 flex-1 items-start gap-3">
                     <input type="hidden" name="criterioId" value={c.id} />
                     <input type="hidden" name="modo" value="RESPONSABLE" />
@@ -350,7 +382,7 @@
                       disabled={!puedeMarcarAvance}
                       title={puedeMarcarAvance
                         ? 'Haz clic para marcar o desmarcar este criterio'
-                        : 'El checklist del responsable solo se edita cuando la tarea está asignada o en proceso'}
+                        : 'El avance solo se modifica en estado Asignada o En proceso'}
                       class="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-md border transition-colors disabled:cursor-default
                         {c.completado
                           ? 'border-emerald-400 bg-emerald-400/20 text-emerald-300'
@@ -363,7 +395,7 @@
                     </span>
                   </form>
 
-                  <!-- Check de Verificación Manual del Encargado (visible en revisión o terminada) -->
+                  <!-- Check de verificación independiente (Encargado en revisión) -->
                   {#if data.tarea.estado === 'EN_REVISION' || data.tarea.estado === 'TERMINADA'}
                     <form method="POST" action="?/toggleCriterio" use:enhance class="shrink-0">
                       <input type="hidden" name="criterioId" value={c.id} />
@@ -371,6 +403,9 @@
                       <button
                         type="submit"
                         disabled={!puedeVerificarRevision}
+                        title={puedeVerificarRevision
+                          ? 'Verificar cumplimiento de este criterio'
+                          : 'Solo el encargado o revisor puede verificar en estado En revisión'}
                         class="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 font-mono text-[10px] font-semibold tracking-wider uppercase transition-colors disabled:cursor-default
                           {c.verificadoEncargado
                             ? 'border-violet-400/50 bg-violet-400/15 text-violet-300'
@@ -389,15 +424,12 @@
           {/if}
         </Panel>
 
-        <!-- =============================================================== -->
-        <!-- TW-09: CONVERSACIÓN CONTEXTUAL DENTRO DE LA TAREA               -->
-        <!-- =============================================================== -->
+        <!-- TW-09: Conversación de la tarea -->
         <div id="conversacion">
           <Panel
-            titulo="Conversación de la tarea (TW-09)"
-            descripcion="Comunicación directa entre responsable y encargado vinculada a esta asignación."
+            titulo="Chat"
+            descripcion="Comunicación directa entre Miembro y Encargado vinculada a esta asignación."
           >
-            <!-- Hilo de mensajes -->
             <div
               bind:this={contenedorChatRef}
               class="max-h-96 space-y-3.5 overflow-y-auto rounded-xl border border-tezcat-border bg-tezcat-bg p-4"
@@ -409,7 +441,7 @@
                     Aún no hay mensajes en esta tarea
                   </p>
                   <p class="mt-0.5 max-w-sm text-[11px]">
-                    Escribe un comentario abajo para resolver dudas sobre los criterios, reportar bloqueos o dar retroalimentación de las evidencias.
+                    Escribe un comentario abajo para resolver dudas sobre los criterios, reportar bloqueos o retroalimentar evidencias.
                   </p>
                 </div>
               {:else}
@@ -453,7 +485,7 @@
               {/if}
             </div>
 
-            <!-- Caja para redactar nuevo mensaje -->
+            <!-- Redactar mensaje -->
             <form
               method="POST"
               action="?/comentar"
@@ -495,6 +527,7 @@
           </Panel>
         </div>
 
+        <!-- Historial de eventos -->
         <Panel titulo="Historial">
           {#if data.eventos.length === 0}
             <p class="text-sm text-tezcat-textMuted">Sin eventos registrados.</p>
@@ -524,14 +557,14 @@
         <Panel titulo="Detalles">
           <dl class="space-y-4 text-sm">
             <div>
-              <dt class={etiqueta}>Responsable</dt>
+              <dt class={etiqueta}>Miembro</dt>
               <dd class="mt-1 flex items-center gap-2">
                 <span class="material-symbols-outlined text-base text-tezcat-textMuted">person</span>
                 {data.responsable?.nombre ?? 'Sin asignar'}
               </dd>
             </div>
             <div>
-              <dt class={etiqueta}>Revisor</dt>
+              <dt class={etiqueta}>Encargado</dt>
               <dd class="mt-1 flex items-center gap-2">
                 <span class="material-symbols-outlined text-base text-tezcat-textMuted">rate_review</span>
                 {data.revisor?.nombre ?? 'Sin revisor'}
@@ -583,14 +616,11 @@
           </dl>
         </Panel>
 
-        <!-- =============================================================== -->
-        <!-- TW-08: EVIDENCIAS Y RECURSOS ADJUNTOS                           -->
-        <!-- =============================================================== -->
+        <!-- TW-08: Archivos y Evidencias -->
         <Panel
-          titulo="Evidencias y recursos (TW-08)"
-          descripcion="Materiales guía del encargado y entregables de evidencia del responsable."
+          titulo="Archivos De La Tarea"
+          descripcion="Materiales guía del encargado y entregables de evidencia del Miembro."
         >
-          <!-- Listado de archivos y enlaces actuales -->
           {#if data.archivos.length === 0}
             <div class="mb-4 flex items-start gap-2.5 rounded-xl border border-dashed border-tezcat-border bg-tezcat-bg/50 p-3.5 text-xs text-tezcat-textMuted">
               <span class="material-symbols-outlined text-lg text-tezcat-cyan">attach_file</span>
@@ -620,16 +650,19 @@
                       </div>
                     </a>
 
-                    <form method="POST" action="?/eliminarArchivo" use:enhance>
-                      <input type="hidden" name="archivoId" value={a.id} />
-                      <button
-                        type="submit"
-                        title="Eliminar archivo"
-                        class="rounded p-1 text-tezcat-textMuted transition-colors hover:bg-tezcat-danger/15 hover:text-red-300"
-                      >
-                        <span class="material-symbols-outlined text-sm">delete</span>
-                      </button>
-                    </form>
+                    <!-- Eliminar archivo (solo autor o encargado) -->
+                    {#if data.user.rol === 'ENCARGADO' || data.user.id === a.subidoPorId || data.user.rol === 'ADMIN'}
+                      <form method="POST" action="?/eliminarArchivo" use:enhance>
+                        <input type="hidden" name="archivoId" value={a.id} />
+                        <button
+                          type="submit"
+                          title="Eliminar archivo"
+                          class="rounded p-1 text-tezcat-textMuted transition-colors hover:bg-tezcat-danger/15 hover:text-red-300"
+                        >
+                          <span class="material-symbols-outlined text-sm">delete</span>
+                        </button>
+                      </form>
+                    {/if}
                   </div>
 
                   <div class="mt-2 flex items-center justify-between border-t border-tezcat-border/60 pt-1.5 font-mono text-[9px] uppercase">
@@ -647,7 +680,7 @@
             </ul>
           {/if}
 
-          <!-- Selector de modo: Subir archivo o Adjuntar enlace -->
+          <!-- Selector y formulario para subir evidencias -->
           {#if data.tarea.estado !== 'TERMINADA'}
             <div class="space-y-3 border-t border-tezcat-border pt-3">
               <div class="grid grid-cols-2 gap-1 rounded-lg bg-tezcat-bg p-1 font-mono text-[10px]">

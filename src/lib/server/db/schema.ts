@@ -90,6 +90,7 @@ export const tareaCriterios = pgTable('tarea_criterios', {
   tareaId: uuid('tarea_id').notNull().references(() => tareas.id, { onDelete: 'cascade' }),
   descripcion: varchar('descripcion', { length: 255 }).notNull(),
   completado: boolean('completado').notNull().default(false),
+  verificadoEncargado: boolean('verificado_encargado').notNull().default(false), // <-- NUEVA COLUMNA TW-07
   creadoEn: timestamp('creado_en', { withTimezone: true }).notNull().defaultNow()
 }, (t) => [index('tarea_criterios_tarea_idx').on(t.tareaId)]);
 
