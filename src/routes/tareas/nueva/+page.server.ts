@@ -1,25 +1,7 @@
 import { fail, isHttpError, redirect, type Actions } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
-import { crearTareaObligatoria, exigirEncargado, opcionesParaCrear } from '$lib/server/tareas';
+import { crearTareaObligatoria, exigirEncargado, opcionesParaCrear, registrarArchivo } from '$lib/server/tareas';
 
-/**
- * CONTRATO PARA EL FRONTEND
- *
- * data (load):
- *   user               { id, nombre, rol, departamentoId }
- *   responsables       [{ id, nombre, rol }]   usuarios activos del departamento
- *   revisores          [{ id, nombre, rol }]   solo los ENCARGADO activos del departamento
- *   proyectos          [{ id, nombre }]        proyectos activos del departamento
- *   prioridades        string[]                BAJA | MEDIA | ALTA | URGENTE
- *   dificultades       string[]                FACIL | INTERMEDIA | DIFICIL | EXPERTO
- *   prioridadPorDefecto / dificultadPorDefecto
- *
- * Acción ?/crear  (POST, application/x-www-form-urlencoded)
- *   campos: titulo*, descripcion, responsableId*, revisorId (solo encargado), fechaLimite* (YYYY-MM-DD),
- *           prioridad, dificultad, proyectoId, criterios (campo repetido, uno por criterio)
- *   éxito:  redirige (303) a /tareas/<id>
- *   error:  fail(status, { error: string, valores })  → `valores` trae lo que escribió la persona
- */
 export const load: PageServerLoad = async ({ locals }) => {
   const encargado = exigirEncargado(locals.user);
   return { user: encargado, ...(await opcionesParaCrear(encargado)) };
@@ -45,14 +27,35 @@ export const actions: Actions = {
     const encargado = exigirEncargado(locals.user);
     const form = await request.formData();
 
+    const archivosSubidos = form
+      .getAll('archivosGuia')
+      .filter((item): item is File => item instanceof File && item.size > 0);
+
+    const LIMITE_BYTES = 10 * 1024 * 1024;
+    for (const archivo of archivosSubidos) {
+      if (archivo.size > LIMITE_BYTES) {
+        return fail(400, {
+          error: `El archivo "${archivo.name}" supera el límite permitido de 10 MB.`,
+          valores: valoresDelFormulario(form)
+        });
+      }
+    }
+
     let tareaId: string;
     try {
       tareaId = (await crearTareaObligatoria(encargado, form)).id;
+
+      // GUARDADO REAL EN POSTGRESQL Y DISCO (TW-08)
+      if (archivosSubidos.length > 0) {
+        for (const archivo of archivosSubidos) {
+          await registrarArchivo(tareaId, encargado.id, archivo);
+        }
+      }
     } catch (e) {
       if (isHttpError(e)) return fail(e.status, { error: e.body.message, valores: valoresDelFormulario(form) });
       throw e;
     }
-    // El redirect va fuera del try/catch: en SvelteKit también funciona lanzando una excepción.
+    
     redirect(303, `/tareas/${tareaId}`);
   }
 };

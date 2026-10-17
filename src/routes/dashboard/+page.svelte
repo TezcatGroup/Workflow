@@ -259,9 +259,9 @@
                         </span>
                       </span>
                       <span class="mt-1 block truncate font-semibold">
-                        {#if t.tareaId}
+                        {#if t.id}
                           <a
-                            href="/tareas/{t.tareaId}"
+                            href="/tareas/{t.id}"
                             title="Ver detalle de la tarea"
                             class="transition-colors hover:text-tezcat-cyan hover:underline underline-offset-4"
                           >
@@ -283,9 +283,9 @@
                       </span>
                     </p>
                     <p class="mt-1 font-mono text-[10px] text-tezcat-textSecondary">Impacto: {t.impacto}</p>
-                    {#if t.tareaId}
+                    {#if t.id}
                       <a
-                        href="/tareas/{t.tareaId}"
+                        href="/tareas/{t.id}"
                         class="mt-1.5 inline-flex items-center gap-1 font-mono text-[10px] font-semibold tracking-wider text-tezcat-cyan uppercase transition-colors hover:underline"
                       >
                         Ver detalle

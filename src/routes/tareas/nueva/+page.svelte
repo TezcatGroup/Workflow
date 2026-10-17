@@ -9,6 +9,7 @@
   // Contrato de datos y campos: ver +page.server.ts (propiedad del backend).
   // Esta vista consume data.responsables / data.revisores / data.proyectos / prioridades /
   // dificultades y restaura lo escrito desde form.valores si la creación falló.
+  // ubicacion: src>routes>tareas>nueva>+page.svelte
 
   const etiqueta = 'mb-1.5 block font-mono text-[10px] tracking-wider text-tezcat-textSecondary uppercase';
 
@@ -22,6 +23,11 @@
     untrack(() => (form?.valores?.criterios?.length ? [...form.valores.criterios] : ['']))
   );
 
+  // TW-08: Estado reactivo para archivos guía seleccionados por el encargado
+  let archivosSeleccionados = $state<File[]>([]);
+  let arrastrandoArchivo = $state(false);
+  let inputArchivosRef = $state<HTMLInputElement | null>(null);
+
   const hoy = new Date().toISOString().slice(0, 10);
   let enviando = $state(false);
 
@@ -31,6 +37,39 @@
 
   function quitarCriterio(i: number) {
     criterios = criterios.length === 1 ? [''] : criterios.filter((_, j) => j !== i);
+  }
+
+  function sincronizarInputArchivos(archivos: File[]) {
+    archivosSeleccionados = archivos;
+    if (!inputArchivosRef) return;
+    const dt = new DataTransfer();
+    for (const f of archivos) dt.items.add(f);
+    inputArchivosRef.files = dt.files;
+  }
+
+  function alSeleccionarArchivos(e: Event) {
+    const target = e.currentTarget as HTMLInputElement;
+    if (!target.files) return;
+    const nuevos = Array.from(target.files);
+    sincronizarInputArchivos([...archivosSeleccionados, ...nuevos]);
+  }
+
+  function alSoltarArchivos(e: DragEvent) {
+    e.preventDefault();
+    arrastrandoArchivo = false;
+    if (!e.dataTransfer?.files) return;
+    const nuevos = Array.from(e.dataTransfer.files);
+    sincronizarInputArchivos([...archivosSeleccionados, ...nuevos]);
+  }
+
+  function quitarArchivoSeleccionado(index: number) {
+    sincronizarInputArchivos(archivosSeleccionados.filter((_, i) => i !== index));
+  }
+
+  function formatearBytes(bytes: number): string {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
   }
 </script>
 
@@ -50,11 +89,11 @@
         Volver a tareas
       </a>
       <p class="mt-4 font-mono text-[11px] font-semibold tracking-widest text-tezcat-cyan uppercase">
-        TW-04 · Tareas obligatorias
+        TW-04 · TW-08 · Tareas obligatorias y recursos
       </p>
       <h1 class="mt-1 text-2xl font-bold tracking-tight text-white">Nueva tarea obligatoria</h1>
       <p class="mt-1.5 text-xs text-tezcat-textSecondary">
-        Define responsable, fecha límite y criterios verificables. Las tareas obligatorias no otorgan XP, puntos ni ramas.
+        Define responsable, fecha límite, criterios verificables y adjunta material de apoyo. Las tareas obligatorias no otorgan XP, puntos ni ramas.
       </p>
     </div>
 
@@ -73,6 +112,7 @@
       <form
         method="POST"
         action="?/crear"
+        enctype="multipart/form-data"
         class="space-y-5"
         use:enhance={() => {
           enviando = true;
@@ -224,11 +264,11 @@
           </div>
         </div>
 
-        <!-- Criterios de aceptación -->
+        <!-- Criterios de aceptación (TW-07) -->
         <fieldset>
           <legend class={etiqueta}>Criterios de aceptación *</legend>
           <p class="mb-2 text-[11px] text-tezcat-textMuted">
-            Condiciones verificables que comprueban que la tarea quedó terminada. Agrega al menos una.
+            Condiciones verificables que el responsable marcará en su checklist antes de solicitar revisión. Agrega al menos una.
           </p>
 
           <div class="space-y-2.5">
@@ -267,6 +307,78 @@
             <span class="material-symbols-outlined text-base">add</span>
             Agregar criterio
           </button>
+        </fieldset>
+
+        <!-- Recursos y archivos guía del Encargado (TW-08) -->
+        <fieldset>
+          <legend class={etiqueta}>
+            Recursos y material de apoyo <span class="text-tezcat-textMuted normal-case">(opcional · TW-08)</span>
+          </legend>
+          <p class="mb-2 text-[11px] text-tezcat-textMuted">
+            Adjunta formatos, manuales o referencias para que el miembro asignado pueda consultarlos al ejecutar la tarea (máx. 10 MB por archivo).
+          </p>
+
+          <div
+            role="region"
+            aria-label="Zona para adjuntar archivos de referencia"
+            ondragover={(e) => {
+              e.preventDefault();
+              arrastrandoArchivo = true;
+            }}
+            ondragleave={() => (arrastrandoArchivo = false)}
+            ondrop={alSoltarArchivos}
+            class="flex flex-col items-center justify-center rounded-xl border border-dashed p-5 text-center transition-colors
+              {arrastrandoArchivo
+                ? 'border-tezcat-cyan bg-tezcat-cyan/10'
+                : 'border-tezcat-border bg-tezcat-bg/60 hover:border-tezcat-cyan/40'}"
+          >
+            <span class="material-symbols-outlined text-3xl text-tezcat-cyan">upload_file</span>
+            <p class="mt-1.5 text-xs font-semibold text-tezcat-textPrimary">
+              Arrastra archivos aquí o
+              <label
+                for="archivosGuia"
+                class="cursor-pointer text-tezcat-cyan underline decoration-tezcat-cyan/50 underline-offset-2 hover:text-tezcat-cyanHover"
+              >
+                explora en tu equipo
+              </label>
+            </p>
+            <p class="mt-0.5 font-mono text-[10px] text-tezcat-textMuted">
+              PDF, DOCX, XLSX, PNG, JPG, ZIP · Hasta 10 MB c/u
+            </p>
+            <input
+              bind:this={inputArchivosRef}
+              id="archivosGuia"
+              name="archivosGuia"
+              type="file"
+              multiple
+              onchange={alSeleccionarArchivos}
+              class="sr-only"
+            />
+          </div>
+
+          {#if archivosSeleccionados.length > 0}
+            <ul class="mt-3 space-y-2">
+              {#each archivosSeleccionados as archivo, index (archivo.name + index)}
+                <li class="flex items-center justify-between gap-3 rounded-xl border border-tezcat-border bg-tezcat-bg px-3.5 py-2 text-xs">
+                  <div class="flex min-w-0 items-center gap-2.5">
+                    <span class="material-symbols-outlined text-base text-tezcat-cyan">description</span>
+                    <span class="truncate font-medium text-tezcat-textPrimary">{archivo.name}</span>
+                    <span class="shrink-0 font-mono text-[10px] text-tezcat-textMuted">
+                      {formatearBytes(archivo.size)}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onclick={() => quitarArchivoSeleccionado(index)}
+                    class="inline-flex size-7 shrink-0 items-center justify-center rounded-lg text-tezcat-textMuted transition-colors hover:bg-tezcat-danger/10 hover:text-red-300"
+                    title="Quitar archivo"
+                  >
+                    <span class="material-symbols-outlined text-base">close</span>
+                  </button>
+                </li>
+              {/each}
+            </ul>
+          {/if}
         </fieldset>
 
         <!-- Acciones -->

@@ -2,12 +2,15 @@ import { error } from '@sveltejs/kit';
 import { and, asc, desc, eq, inArray } from 'drizzle-orm';
 import { db } from '$lib/server/db';
 import {
-  estadoTarea, proyectos, tareaArchivos, tareaCriterios, tareaEventos, tareas, usuarios
+  estadoTarea, proyectos, tareaArchivos, tareaCriterios, tareaEventos, tareas, usuarios, tareaMensajes
 } from '$lib/server/db/schema';
 import { campo } from '$lib/server/admin';
+import fs from 'fs/promises';
+import path from 'path';
+import crypto from 'crypto';
 
 /* ------------------------------------------------------------------ */
-/* Constantes (el frontend puede usarlas para armar selects)           */
+/* Constantes (el frontend puede usarlas para armar selects)          */
 /* ------------------------------------------------------------------ */
 
 export const PRIORIDADES = ['BAJA', 'MEDIA', 'ALTA', 'URGENTE'] as const;
@@ -22,7 +25,7 @@ const MAX_CRITERIO = 255;
 const MAX_CRITERIOS = 20;
 
 /* ------------------------------------------------------------------ */
-/* Tipos y permisos                                                    */
+/* Tipos y permisos                                                   */
 /* ------------------------------------------------------------------ */
 
 export type Actor = NonNullable<App.Locals['user']>;
@@ -36,7 +39,7 @@ export function exigirEncargado(user: App.Locals['user']): Encargado {
 }
 
 /* ------------------------------------------------------------------ */
-/* Validaciones                                                        */
+/* Validaciones                                                       */
 /* ------------------------------------------------------------------ */
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -128,7 +131,7 @@ async function validarProyecto(id: string, departamentoId: string): Promise<stri
 }
 
 /* ------------------------------------------------------------------ */
-/* Datos para el formulario de creación                                */
+/* Datos para el formulario de creación                               */
 /* ------------------------------------------------------------------ */
 
 export async function opcionesParaCrear(actor: Encargado) {
@@ -145,7 +148,6 @@ export async function opcionesParaCrear(actor: Encargado) {
   ]);
   return {
     responsables,
-    // El revisor solo puede ser un encargado del departamento (lo mismo que valida crearTareaObligatoria).
     revisores: responsables.filter((u) => u.rol === 'ENCARGADO'),
     proyectos: proyectosActivos,
     prioridades: [...PRIORIDADES],
@@ -159,13 +161,6 @@ export async function opcionesParaCrear(actor: Encargado) {
 /* Creación de tareas obligatorias (TW-04)                             */
 /* ------------------------------------------------------------------ */
 
-/**
- * Campos del formulario: titulo, descripcion, responsableId, revisorId, fechaLimite,
- * prioridad, dificultad, proyectoId y criterios (campo repetido, uno por criterio).
- *
- * Todo lo que define una tarea OBLIGATORIA lo fija el servidor: tipo, estado inicial,
- * departamento, creador y la ausencia de XP/puntos. Nada de eso se toma del formulario.
- */
 export async function crearTareaObligatoria(actor: Encargado, form: FormData) {
   const titulo = validarTitulo(campo(form, 'titulo'));
   const descripcion = validarDescripcion(campo(form, 'descripcion'));
@@ -178,7 +173,6 @@ export async function crearTareaObligatoria(actor: Encargado, form: FormData) {
   if (!responsableTxt) error(400, 'El responsable es obligatorio');
   const responsableId = await validarUsuarioDelDepartamento(responsableTxt, actor.departamentoId, 'El responsable');
 
-  // Revisor opcional: si no se indica, revisa quien crea la tarea. Solo puede ser un encargado del departamento.
   const revisorTxt = campo(form, 'revisorId');
   let revisorId = actor.id;
   if (revisorTxt) {
@@ -229,12 +223,6 @@ export async function crearTareaObligatoria(actor: Encargado, form: FormData) {
 
 export type EstadoTarea = (typeof estadoTarea.enumValues)[number];
 
-/**
- * Quién puede hacer cada transición.
- * - RESPONSABLE: el usuario al que se asignó la tarea.
- * - REVISOR: el revisor asignado o el encargado del departamento. Es una regla
- *   provisional: en el Sprint 6 (TW-12) la revisión formal reemplaza este paso.
- */
 type Quien = 'RESPONSABLE' | 'REVISOR';
 
 export const TRANSICIONES: Record<EstadoTarea, Partial<Record<EstadoTarea, Quien>>> = {
@@ -255,7 +243,6 @@ function esEncargadoDelDepartamento(actor: Actor, t: DatosPermiso): boolean {
   return actor.rol === 'ENCARGADO' && actor.departamentoId !== null && actor.departamentoId === t.departamentoId;
 }
 
-/** Quién puede ver el detalle (TW-06): creador, responsable, revisor, encargado del depto y admin. */
 function puedeVer(actor: Actor, t: DatosPermiso): boolean {
   if (actor.rol === 'ADMIN') return true;
   if (actor.id === t.creadoPorId || actor.id === t.responsableId || actor.id === t.revisorId) return true;
@@ -263,12 +250,11 @@ function puedeVer(actor: Actor, t: DatosPermiso): boolean {
 }
 
 function cumpleRol(actor: Actor, quien: Quien, t: DatosPermiso): boolean {
-  if (actor.rol === 'ADMIN') return false; // el admin solo consulta
+  if (actor.rol === 'ADMIN') return false; 
   if (quien === 'RESPONSABLE') return actor.id === t.responsableId;
   return actor.id === t.revisorId || esEncargadoDelDepartamento(actor, t);
 }
 
-/** Estados a los que este usuario puede mover la tarea (sirve para mostrar u ocultar botones). */
 function transicionesPermitidas(actor: Actor, estado: EstadoTarea, t: DatosPermiso): EstadoTarea[] {
   return (Object.entries(TRANSICIONES[estado]) as [EstadoTarea, Quien][])
     .filter(([, quien]) => cumpleRol(actor, quien, t))
@@ -282,10 +268,6 @@ async function cargarTarea(id: string) {
   return tarea;
 }
 
-/**
- * Cambia el estado de una tarea. Valida en el servidor la transición y el permiso,
- * y registra el evento CAMBIO_ESTADO en la misma transacción.
- */
 export async function cambiarEstado(actor: Actor, tareaId: string, destinoTxt: string) {
   const destino = estadoTarea.enumValues.find((e) => e === destinoTxt);
   if (!destino) error(400, 'Estado inválido');
@@ -298,7 +280,6 @@ export async function cambiarEstado(actor: Actor, tareaId: string, destinoTxt: s
   if (!cumpleRol(actor, quien, tarea)) error(403, 'No tienes permiso para este cambio de estado');
 
   await db.transaction(async (tx) => {
-    // El WHERE incluye el estado leído: si otra persona la cambió antes, no se sobrescribe.
     const actualizadas = await tx.update(tareas)
       .set({ estado: destino, actualizadoEn: new Date() })
       .where(and(eq(tareas.id, tarea.id), eq(tareas.estado, tarea.estado)))
@@ -371,16 +352,14 @@ export async function obtenerDetalle(actor: Actor, tareaId: string) {
     criterios,
     archivos,
     eventos,
-    // Estados a los que puede mover la tarea quien consulta (vacío = no mostrar botones).
     transicionesPermitidas: transicionesPermitidas(actor, tarea.estado, tarea)
   };
 }
 
 /* ------------------------------------------------------------------ */
-/* Lista de tareas                                                     */
+/* Lista de tareas                                                    */
 /* ------------------------------------------------------------------ */
 
-/** MIEMBRO: sus tareas. ENCARGADO: las de su departamento. ADMIN: todas (solo lectura). */
 export async function listarMisTareas(actor: Actor) {
   const filtro = actor.rol === 'ADMIN'
     ? undefined
@@ -402,4 +381,102 @@ export async function listarMisTareas(actor: Actor) {
     .where(filtro)
     .orderBy(asc(tareas.fechaLimite))
     .limit(200);
+}
+
+// =========================================================================
+// TW-07: CHECKLIST INTERACTIVO
+// =========================================================================
+export async function toggleCriterioBD(criterioId: string, modo: 'RESPONSABLE' | 'ENCARGADO') {
+  const actual = await db.select().from(tareaCriterios).where(eq(tareaCriterios.id, criterioId)).then(r => r[0]);
+  if (!actual) throw new Error("Criterio no encontrado");
+
+  // Al no estar verificadoEncargado en tu schema, reutilizamos el mismo campo completado para ambos roles
+  await db.update(tareaCriterios)
+    .set({ completado: !actual.completado })
+    .where(eq(tareaCriterios.id, criterioId));
+}
+
+// =========================================================================
+// TW-08: GESTIÓN DE ARCHIVOS Y EVIDENCIAS
+// =========================================================================
+export async function registrarArchivo(
+  tareaId: string, 
+  subidoPorId: string, 
+  archivoFile: File | null = null, 
+  enlaceUrl: string = '', 
+  enlaceTitulo: string = ''
+) {
+  if (enlaceUrl) {
+    await db.insert(tareaArchivos).values({
+      tareaId,
+      subidoPorId,
+      nombre: enlaceTitulo || enlaceUrl,
+      mimeType: 'text/uri-list',
+      tamanoBytes: 0,
+      ruta: enlaceUrl
+    });
+    return;
+  }
+
+  if (archivoFile) {
+    const buffer = Buffer.from(await archivoFile.arrayBuffer());
+    const uploadDir = path.resolve('uploads', tareaId);
+    await fs.mkdir(uploadDir, { recursive: true });
+    
+    const safeName = `${crypto.randomBytes(4).toString('hex')}_${archivoFile.name}`;
+    const filePath = path.join(uploadDir, safeName);
+    
+    await fs.writeFile(filePath, buffer);
+
+    await db.insert(tareaArchivos).values({
+      tareaId,
+      subidoPorId,
+      nombre: archivoFile.name,
+      mimeType: archivoFile.type || 'application/octet-stream',
+      tamanoBytes: archivoFile.size,
+      ruta: `/uploads/${tareaId}/${safeName}`
+    });
+  }
+}
+
+export async function eliminarArchivoBD(archivoId: string) {
+  await db.delete(tareaArchivos).where(eq(tareaArchivos.id, archivoId));
+}
+
+// =========================================================================
+// TW-09: CONVERSACIÓN CONTEXTUAL
+// =========================================================================
+export async function agregarComentarioBD(tareaId: string, autorId: string, contenido: string) {
+  await db.insert(tareaMensajes).values({
+    tareaId,
+    autorId,
+    contenido
+  });
+}
+
+export async function obtenerComentariosBD(tareaId: string) {
+  const filas = await db
+    .select({
+      id: tareaMensajes.id,
+      tareaId: tareaMensajes.tareaId,
+      autorId: tareaMensajes.autorId,
+      contenido: tareaMensajes.contenido,
+      creadoEn: tareaMensajes.creadoEn,
+      autorNombre: usuarios.nombre,
+      autorRol: usuarios.rol
+    })
+    .from(tareaMensajes)
+    .leftJoin(usuarios, eq(tareaMensajes.autorId, usuarios.id))
+    .where(eq(tareaMensajes.tareaId, tareaId))
+    .orderBy(asc(tareaMensajes.creadoEn));
+
+  return filas.map((c) => ({
+    id: c.id,
+    tareaId: c.tareaId,
+    autorId: c.autorId ?? '',
+    autorNombre: c.autorNombre ?? 'Usuario',
+    autorRol: c.autorRol ?? 'MIEMBRO',
+    contenido: c.contenido,
+    creadoEn: c.creadoEn
+  }));
 }
