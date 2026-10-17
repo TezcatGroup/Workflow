@@ -238,7 +238,7 @@
           {/snippet}
 
           <ul class="space-y-2">
-            {#each tareas as t (t.id)}
+            {#each tareas as t (t.tareaId)}
               {@const p = prioridades[t.prioridad]}
               <li class="relative overflow-hidden rounded-lg border border-tezcat-border bg-tezcat-bg p-4 pl-5 transition-colors hover:bg-tezcat-surface {p.hover}">
                 <span class="absolute inset-y-0 left-0 w-1 {p.barra}"></span>
@@ -247,10 +247,10 @@
                     <input
                       type="checkbox"
                       class="mt-1 size-4 shrink-0 accent-tezcat-cyan"
-                      checked={hechas.has(t.id)}
-                      onchange={() => alternar(t.id)}
+                      checked={hechas.has(t.tareaId)}
+                      onchange={() => alternar(t.tareaId)}
                     />
-                    <span class="min-w-0 {hechas.has(t.id) ? 'line-through opacity-50' : ''}">
+                    <span class="min-w-0 {hechas.has(t.tareaId) ? 'line-through opacity-50' : ''}">
                       <span class="flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[10px] text-tezcat-textSecondary">
                         <span class="rounded px-1.5 py-0.5 font-bold tracking-wider uppercase {p.etiqueta}">{p.texto}</span>
                         <span>{t.id}</span>
@@ -259,9 +259,9 @@
                         </span>
                       </span>
                       <span class="mt-1 block truncate font-semibold">
-                        {#if t.id}
+                        {#if t.tareaId}
                           <a
-                            href="/tareas/{t.id}"
+                            href="/tareas/{t.tareaId}"
                             title="Ver detalle de la tarea"
                             class="transition-colors hover:text-tezcat-cyan hover:underline underline-offset-4"
                           >
@@ -283,9 +283,9 @@
                       </span>
                     </p>
                     <p class="mt-1 font-mono text-[10px] text-tezcat-textSecondary">Impacto: {t.impacto}</p>
-                    {#if t.id}
+                    {#if t.tareaId}
                       <a
-                        href="/tareas/{t.id}"
+                        href="/tareas/{t.tareaId}"
                         class="mt-1.5 inline-flex items-center gap-1 font-mono text-[10px] font-semibold tracking-wider text-tezcat-cyan uppercase transition-colors hover:underline"
                       >
                         Ver detalle
