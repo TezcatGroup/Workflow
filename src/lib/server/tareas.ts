@@ -1,5 +1,5 @@
 import { error } from '@sveltejs/kit';
-import { and, asc, desc, eq, inArray } from 'drizzle-orm';
+import { and, asc, eq, inArray } from 'drizzle-orm';
 import { db } from '$lib/server/db';
 import {
   estadoTarea, proyectos, tareaArchivos, tareaCriterios, tareaEventos, tareas, usuarios, tareaMensajes
@@ -39,6 +39,54 @@ export function exigirEncargado(user: App.Locals['user']): Encargado {
   if (!user || user.rol !== 'ENCARGADO') error(403, 'Solo un encargado puede crear tareas');
   if (!user.departamentoId) error(400, 'Tu cuenta no tiene departamento asignado');
   return { ...user, departamentoId: user.departamentoId };
+}
+
+/* ------------------------------------------------------------------ */
+/* TW-10: Tipos y constructor del Timeline Unificado (Chat + Eventos) */
+/* ------------------------------------------------------------------ */
+
+export type ComentarioTarea = {
+  id: string;
+  tareaId: string;
+  autorId: string;
+  autorNombre: string;
+  autorRol: string;
+  contenido: string;
+  creadoEn: Date;
+};
+
+export type EventoTarea = {
+  id: string;
+  tareaId: string;
+  tipo: string;
+  detalle: unknown;
+  creadoEn: Date;
+  actorNombre: string | null;
+};
+
+export type ItemTimeline =
+  | ({ tipoItem: 'MENSAJE' } & ComentarioTarea)
+  | ({ tipoItem: 'EVENTO' } & EventoTarea);
+
+/**
+ * TW-10: Fusiona los mensajes del chat y los eventos de auditoría de la tarea
+ * en una sola secuencia cronológica ascendente para reconstruir lo ocurrido.
+ */
+export function construirTimeline(
+  comentarios: ComentarioTarea[],
+  eventos: EventoTarea[]
+): ItemTimeline[] {
+  const items: ItemTimeline[] = [
+    ...eventos.map((e) => ({ tipoItem: 'EVENTO' as const, ...e })),
+    ...comentarios.map((c) => ({ tipoItem: 'MENSAJE' as const, ...c }))
+  ];
+
+  return items.sort((a, b) => {
+    // Garantizar que el evento fundacional TAREA_CREADA aparezca siempre al inicio
+    if (a.tipoItem === 'EVENTO' && a.tipo === 'TAREA_CREADA') return -1;
+    if (b.tipoItem === 'EVENTO' && b.tipo === 'TAREA_CREADA') return 1;
+    return new Date(a.creadoEn).getTime() - new Date(b.creadoEn).getTime();
+  });
 }
 
 /* ------------------------------------------------------------------ */
@@ -313,7 +361,7 @@ export async function cambiarEstado(actor: Actor, tareaId: string, destinoTxt: s
 }
 
 /* ------------------------------------------------------------------ */
-/* Detalle de una tarea unificado (TW-06, TW-07, TW-08 y TW-09)        */
+/* Detalle de una tarea unificado (TW-06, TW-07, TW-08, TW-09, TW-10) */
 /* ------------------------------------------------------------------ */
 
 export async function obtenerDetalle(actor: Actor, tareaId: string) {
@@ -353,11 +401,16 @@ export async function obtenerDetalle(actor: Actor, tareaId: string) {
       .leftJoin(usuarios, eq(tareaArchivos.subidoPorId, usuarios.id))
       .where(eq(tareaArchivos.tareaId, tarea.id))
       .orderBy(asc(tareaArchivos.creadoEn)),
+    // TW-10: Orden ascendente (asc) para integrar eventos cronológicamente en el chat
     db.select({
-      id: tareaEventos.id, tipo: tareaEventos.tipo, detalle: tareaEventos.detalle,
-      creadoEn: tareaEventos.creadoEn, actorNombre: usuarios.nombre
+      id: tareaEventos.id,
+      tareaId: tareaEventos.tareaId,
+      tipo: tareaEventos.tipo,
+      detalle: tareaEventos.detalle,
+      creadoEn: tareaEventos.creadoEn,
+      actorNombre: usuarios.nombre
     }).from(tareaEventos).leftJoin(usuarios, eq(tareaEventos.actorId, usuarios.id))
-      .where(eq(tareaEventos.tareaId, tarea.id)).orderBy(desc(tareaEventos.creadoEn)),
+      .where(eq(tareaEventos.tareaId, tarea.id)).orderBy(asc(tareaEventos.creadoEn)),
     obtenerComentariosBD(tarea.id)
   ]);
 
@@ -375,6 +428,9 @@ export async function obtenerDetalle(actor: Actor, tareaId: string) {
     creadoEn: a.creadoEn,
     urlDescarga: a.ruta
   }));
+
+  // TW-10: Construir secuencia temporal unificada de mensajes + eventos
+  const timeline = construirTimeline(comentarios, eventos);
 
   return {
     tarea: {
@@ -399,12 +455,13 @@ export async function obtenerDetalle(actor: Actor, tareaId: string) {
     archivos,
     comentarios,
     eventos,
+    timeline, // <-- TW-10: Entregado a la vista de detalle
     transicionesPermitidas: transicionesPermitidas(actor, tarea.estado, tarea)
   };
 }
 
 /* ------------------------------------------------------------------ */
-/* Lista de tareas (TW-03 y TW-09)                 */
+/* Lista de tareas con Timeline para Drawer (TW-03, TW-09 y TW-10)     */
 /* ------------------------------------------------------------------ */
 
 export async function listarMisTareas(actor: Actor) {
@@ -431,33 +488,39 @@ export async function listarMisTareas(actor: Actor) {
 
   if (tareasBase.length === 0) return [];
 
-  // Una sola consulta agrupada para todos los comentarios de las tareas listadas (evita N+1)
+  // TW-09 y TW-10: Consultas agrupadas en paralelo para mensajes y eventos (evita problema N+1)
   const idsTareas = tareasBase.map((t) => t.id);
-  const todosLosMensajes = await db
-    .select({
-      id: tareaMensajes.id,
-      tareaId: tareaMensajes.tareaId,
-      autorId: tareaMensajes.autorId,
-      contenido: tareaMensajes.contenido,
-      creadoEn: tareaMensajes.creadoEn,
-      autorNombre: usuarios.nombre,
-      autorRol: usuarios.rol
-    })
-    .from(tareaMensajes)
-    .leftJoin(usuarios, eq(tareaMensajes.autorId, usuarios.id))
-    .where(inArray(tareaMensajes.tareaId, idsTareas))
-    .orderBy(asc(tareaMensajes.creadoEn));
+  const [todosLosMensajes, todosLosEventos] = await Promise.all([
+    db
+      .select({
+        id: tareaMensajes.id,
+        tareaId: tareaMensajes.tareaId,
+        autorId: tareaMensajes.autorId,
+        contenido: tareaMensajes.contenido,
+        creadoEn: tareaMensajes.creadoEn,
+        autorNombre: usuarios.nombre,
+        autorRol: usuarios.rol
+      })
+      .from(tareaMensajes)
+      .leftJoin(usuarios, eq(tareaMensajes.autorId, usuarios.id))
+      .where(inArray(tareaMensajes.tareaId, idsTareas))
+      .orderBy(asc(tareaMensajes.creadoEn)),
+    db
+      .select({
+        id: tareaEventos.id,
+        tareaId: tareaEventos.tareaId,
+        tipo: tareaEventos.tipo,
+        detalle: tareaEventos.detalle,
+        creadoEn: tareaEventos.creadoEn,
+        actorNombre: usuarios.nombre
+      })
+      .from(tareaEventos)
+      .leftJoin(usuarios, eq(tareaEventos.actorId, usuarios.id))
+      .where(inArray(tareaEventos.tareaId, idsTareas))
+      .orderBy(asc(tareaEventos.creadoEn))
+  ]);
 
-  const mensajesPorTarea = new Map<string, Array<{
-    id: string;
-    tareaId: string;
-    autorId: string;
-    autorNombre: string;
-    autorRol: string;
-    contenido: string;
-    creadoEn: Date;
-  }>>();
-
+  const mensajesPorTarea = new Map<string, ComentarioTarea[]>();
   for (const m of todosLosMensajes) {
     const lista = mensajesPorTarea.get(m.tareaId) ?? [];
     lista.push({
@@ -472,12 +535,30 @@ export async function listarMisTareas(actor: Actor) {
     mensajesPorTarea.set(m.tareaId, lista);
   }
 
+  // TW-10: Agrupar eventos por tarea para construir el timeline del Drawer en /tareas
+  const eventosPorTarea = new Map<string, EventoTarea[]>();
+  for (const e of todosLosEventos) {
+    const lista = eventosPorTarea.get(e.tareaId) ?? [];
+    lista.push({
+      id: e.id,
+      tareaId: e.tareaId,
+      tipo: e.tipo,
+      detalle: e.detalle,
+      creadoEn: e.creadoEn,
+      actorNombre: e.actorNombre ?? null
+    });
+    eventosPorTarea.set(e.tareaId, lista);
+  }
+
   return tareasBase.map((t) => {
     const comentarios = mensajesPorTarea.get(t.id) ?? [];
+    const eventos = eventosPorTarea.get(t.id) ?? [];
     return {
       ...t,
       totalComentarios: comentarios.length,
-      comentariosRecientes: comentarios
+      comentariosRecientes: comentarios,
+      eventosRecientes: eventos,
+      timeline: construirTimeline(comentarios, eventos) // <-- TW-10: Secuencia lista para el Drawer
     };
   });
 }
@@ -532,7 +613,7 @@ export async function toggleCriterioBD(
 }
 
 /* ------------------------------------------------------------------ */
-/* TW-08: Gestión Segura de Archivos y Evidencias                     */
+/* TW-08 y TW-10: Gestión Segura de Archivos con Registro en Timeline  */
 /* ------------------------------------------------------------------ */
 
 function sanitizarNombreArchivo(nombreOriginal: string): string {
@@ -566,13 +647,25 @@ export async function registrarArchivo(
     if (urlValida.protocol !== 'http:' && urlValida.protocol !== 'https:') {
       error(400, 'El enlace debe comenzar con http:// o https://');
     }
-    await db.insert(tareaArchivos).values({
-      tareaId: tarea.id,
-      subidoPorId: actor.id,
-      nombre: (enlaceTitulo || enlaceUrl).slice(0, 255),
-      mimeType: 'text/uri-list',
-      tamanoBytes: 0,
-      ruta: urlValida.toString()
+    const nombreEnlace = (enlaceTitulo || enlaceUrl).slice(0, 255);
+
+    await db.transaction(async (tx) => {
+      await tx.insert(tareaArchivos).values({
+        tareaId: tarea.id,
+        subidoPorId: actor.id,
+        nombre: nombreEnlace,
+        mimeType: 'text/uri-list',
+        tamanoBytes: 0,
+        ruta: urlValida.toString()
+      });
+
+      // TW-10: Registrar evento de enlace adjuntado en el timeline
+      await tx.insert(tareaEventos).values({
+        tareaId: tarea.id,
+        actorId: actor.id,
+        tipo: 'ARCHIVO_SUBIDO',
+        detalle: { nombre: nombreEnlace, esEnlace: true }
+      });
     });
     return;
   }
@@ -600,14 +693,25 @@ export async function registrarArchivo(
     }
 
     await fs.writeFile(filePath, buffer);
+    const nombreVisible = path.basename(archivoFile.name).slice(0, 255);
 
-    await db.insert(tareaArchivos).values({
-      tareaId: tarea.id,
-      subidoPorId: actor.id,
-      nombre: path.basename(archivoFile.name).slice(0, 255),
-      mimeType: archivoFile.type || 'application/octet-stream',
-      tamanoBytes: archivoFile.size,
-      ruta: `/uploads/${tarea.id}/${safeName}`
+    await db.transaction(async (tx) => {
+      await tx.insert(tareaArchivos).values({
+        tareaId: tarea.id,
+        subidoPorId: actor.id,
+        nombre: nombreVisible,
+        mimeType: archivoFile.type || 'application/octet-stream',
+        tamanoBytes: archivoFile.size,
+        ruta: `/uploads/${tarea.id}/${safeName}`
+      });
+
+      // TW-10: Registrar evento de archivo subido en el timeline
+      await tx.insert(tareaEventos).values({
+        tareaId: tarea.id,
+        actorId: actor.id,
+        tipo: 'ARCHIVO_SUBIDO',
+        detalle: { nombre: nombreVisible, esEnlace: false }
+      });
     });
   }
 }
@@ -632,7 +736,17 @@ export async function eliminarArchivoBD(actor: Actor, tareaId: string, archivoId
     error(403, 'Solo quien subió el archivo o el encargado puede eliminarlo');
   }
 
-  await db.delete(tareaArchivos).where(eq(tareaArchivos.id, archivo.id));
+  await db.transaction(async (tx) => {
+    await tx.delete(tareaArchivos).where(eq(tareaArchivos.id, archivo.id));
+
+    // TW-10: Registrar evento de eliminación de adjunto en el timeline
+    await tx.insert(tareaEventos).values({
+      tareaId: tarea.id,
+      actorId: actor.id,
+      tipo: 'ARCHIVO_ELIMINADO',
+      detalle: { nombre: archivo.nombre }
+    });
+  });
 
   // Borrar también el archivo físico del disco si está en /uploads/
   if (archivo.ruta.startsWith('/uploads/')) {
@@ -667,7 +781,7 @@ export async function agregarComentarioBD(actor: Actor, tareaId: string, conteni
   });
 }
 
-export async function obtenerComentariosBD(tareaId: string) {
+export async function obtenerComentariosBD(tareaId: string): Promise<ComentarioTarea[]> {
   const filas = await db
     .select({
       id: tareaMensajes.id,
@@ -695,16 +809,14 @@ export async function obtenerComentariosBD(tareaId: string) {
 }
 
 // =========================================================================
-// ELIMINACIÓN DE TAREA 
+// ELIMINACIÓN DE TAREA
 // =========================================================================
 export async function eliminarTarea(actor: Actor, tareaId: string) {
-  // 1. Cargar la tarea y verificar acceso
   const tarea = await cargarTarea(tareaId);
   if (!puedeVer(actor, tarea)) {
     error(403, 'No tienes acceso a esta tarea');
   }
 
-  // 2. Candado de permisos: Solo el Encargado pueden borrarla
   const esJefeOAutor =
     actor.rol === 'ADMIN' ||
     (actor.rol === 'ENCARGADO' && actor.departamentoId === tarea.departamentoId) ||
@@ -714,7 +826,6 @@ export async function eliminarTarea(actor: Actor, tareaId: string) {
     error(403, 'Solo el encargado del departamento o quien creó la tarea puede eliminarla');
   }
 
-  // 3. Eliminar los archivos adjuntos
   try {
     const uploadDir = path.resolve('uploads', tarea.id);
     await fs.rm(uploadDir, { recursive: true, force: true });
@@ -722,7 +833,6 @@ export async function eliminarTarea(actor: Actor, tareaId: string) {
     // Si la carpeta no existía en disco, continúa la eliminación en BD sin interrumpir
   }
 
-  // 4. Elimina la tarea en PostgreSQL
   await db.delete(tareas).where(eq(tareas.id, tarea.id));
 
   return { id: tarea.id, eliminada: true };

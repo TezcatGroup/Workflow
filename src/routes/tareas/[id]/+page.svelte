@@ -44,11 +44,6 @@
     TERMINADA: 'task_alt'
   };
 
-  const iconoEvento: Record<string, string> = {
-    TAREA_CREADA: 'add_task',
-    CAMBIO_ESTADO: 'sync_alt'
-  };
-
   function textoBoton(destino: string): string {
     if (destino === 'EN_PROCESO') {
       return data.tarea.estado === 'EN_REVISION' ? 'Devolver a en proceso' : 'Iniciar tarea';
@@ -61,13 +56,83 @@
   const fecha = (d: Date | string | null) =>
     d ? new Date(d).toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' }) : 'Sin fecha';
 
-  function textoEvento(e: (typeof data.eventos)[number]): string {
-    const detalle = e.detalle as { de?: string; a?: string } | null;
+  // =========================================================================
+  // LÓGICA TW-10: Formateadores de Eventos Centrales dentro del Chat
+  // =========================================================================
+  type EventoItem = Extract<(typeof data.timeline)[number], { tipoItem: 'EVENTO' }>;
+
+  function textoEvento(e: EventoItem): string {
+    const detalle = e.detalle as {
+      de?: string;
+      a?: string;
+      nombre?: string;
+      esEnlace?: boolean;
+    } | null;
+
+    if (e.tipo === 'TAREA_CREADA') {
+      return 'Tarea creada';
+    }
     if (e.tipo === 'CAMBIO_ESTADO' && detalle?.de && detalle?.a) {
+      if (detalle.de === 'EN_REVISION' && detalle.a === 'EN_PROCESO') {
+        return 'Se devolvió la tarea a En proceso';
+      }
+      if (detalle.a === 'EN_PROCESO') {
+        return 'Inició la tarea (En proceso)';
+      }
+      if (detalle.a === 'EN_REVISION') {
+        return 'Envió la tarea a revisión';
+      }
+      if (detalle.a === 'TERMINADA') {
+        return 'Tarea aprobada y terminada';
+      }
       return `Cambió de ${textoEstado[detalle.de] ?? detalle.de} a ${textoEstado[detalle.a] ?? detalle.a}`;
     }
-    if (e.tipo === 'TAREA_CREADA') return 'Tarea creada';
+    if (e.tipo === 'ARCHIVO_SUBIDO') {
+      return detalle?.esEnlace
+        ? `Adjuntó enlace: ${detalle.nombre ?? 'recurso'}`
+        : `Adjuntó archivo: ${detalle?.nombre ?? 'documento'}`;
+    }
+    if (e.tipo === 'ARCHIVO_ELIMINADO') {
+      return `Eliminó adjunto: ${detalle?.nombre ?? 'archivo'}`;
+    }
     return e.tipo;
+  }
+
+  function iconoEvento(e: EventoItem): string {
+    const detalle = e.detalle as { de?: string; a?: string; esEnlace?: boolean } | null;
+    if (e.tipo === 'TAREA_CREADA') return 'add_task';
+    if (e.tipo === 'CAMBIO_ESTADO') {
+      if (detalle?.de === 'EN_REVISION' && detalle?.a === 'EN_PROCESO') return 'replay';
+      if (detalle?.a === 'EN_PROCESO') return 'play_arrow';
+      if (detalle?.a === 'EN_REVISION') return 'rate_review';
+      if (detalle?.a === 'TERMINADA') return 'task_alt';
+      return 'sync_alt';
+    }
+    if (e.tipo === 'ARCHIVO_SUBIDO') return detalle?.esEnlace ? 'link' : 'attach_file';
+    if (e.tipo === 'ARCHIVO_ELIMINADO') return 'delete';
+    return 'info';
+  }
+
+  function claseEvento(e: EventoItem): string {
+    const detalle = e.detalle as { de?: string; a?: string } | null;
+    if (e.tipo === 'TAREA_CREADA') {
+      return 'border-tezcat-cyan/30 bg-tezcat-cyan/10 text-tezcat-cyan';
+    }
+    if (e.tipo === 'CAMBIO_ESTADO') {
+      if (detalle?.de === 'EN_REVISION' && detalle?.a === 'EN_PROCESO') {
+        return 'border-amber-400/35 bg-amber-400/10 text-amber-300';
+      }
+      if (detalle?.a === 'EN_REVISION') {
+        return 'border-violet-400/35 bg-violet-400/10 text-violet-300';
+      }
+      if (detalle?.a === 'TERMINADA') {
+        return 'border-emerald-400/35 bg-emerald-400/10 text-emerald-300';
+      }
+    }
+    if (e.tipo === 'ARCHIVO_ELIMINADO') {
+      return 'border-red-400/30 bg-red-400/10 text-red-300';
+    }
+    return 'border-tezcat-border/80 bg-tezcat-surfaceAlt/60 text-tezcat-textSecondary';
   }
 
   function formatearBytes(bytes: number): string {
@@ -112,13 +177,11 @@
     data.user.id === data.creador?.id
   );
 
-  // El responsable marca avance durante ASIGNADA o EN_PROCESO
   const puedeMarcarAvance = $derived(
     (esResponsable || esEncargadoORevisor) &&
       (data.tarea.estado === 'ASIGNADA' || data.tarea.estado === 'EN_PROCESO')
   );
 
-  // El encargado verifica de forma independiente durante EN_REVISION
   const puedeVerificarRevision = $derived(esEncargadoORevisor && data.tarea.estado === 'EN_REVISION');
 
   function transicionBloqueada(destino: string): { bloqueado: boolean; motivo: string } {
@@ -152,15 +215,16 @@
   }
 
   // =========================================================================
-  // LÓGICA TW-09: Conversación Contextual
+  // LÓGICA TW-09 y TW-10: Conversación Contextual con Timeline Unificado
   // =========================================================================
   let nuevoComentario = $state('');
   let enviandoComentario = $state(false);
   let contenedorChatRef = $state<HTMLDivElement | null>(null);
 
+  // TW-10: Auto-scroll al final cuando se agregan nuevos mensajes o eventos al timeline
   $effect(() => {
-    const _total = data.comentarios?.length ?? 0;
-    if (contenedorChatRef && _total > 0) {
+    const _totalItems = data.timeline?.length ?? 0;
+    if (contenedorChatRef && _totalItems > 0) {
       contenedorChatRef.scrollTop = contenedorChatRef.scrollHeight;
     }
   });
@@ -194,7 +258,6 @@
         Volver a tareas
       </a>
 
-      <!-- Botón de eliminación con confirmación (solo visible para Encargado / Creador / Admin) -->
       {#if puedeEliminar}
         <form
           method="POST"
@@ -350,7 +413,6 @@
           {#if data.criterios.length === 0}
             <p class="text-sm text-tezcat-textMuted">Esta tarea no tiene criterios registrados.</p>
           {:else}
-            <!-- Barra de progreso -->
             <div class="mb-4 rounded-xl border border-tezcat-border bg-tezcat-bg p-3.5">
               <div class="mb-1.5 flex flex-wrap items-center justify-between gap-2 font-mono text-[11px]">
                 <span class="text-tezcat-textSecondary uppercase">
@@ -373,7 +435,6 @@
             <ul class="space-y-2.5">
               {#each data.criterios as c (c.id)}
                 <li class="flex flex-col justify-between gap-3 rounded-xl border border-tezcat-border bg-tezcat-bg px-3.5 py-3 text-sm sm:flex-row sm:items-center">
-                  <!-- Check de avance (Responsable) -->
                   <form method="POST" action="?/toggleCriterio" use:enhance class="flex min-w-0 flex-1 items-start gap-3">
                     <input type="hidden" name="criterioId" value={c.id} />
                     <input type="hidden" name="modo" value="RESPONSABLE" />
@@ -395,7 +456,6 @@
                     </span>
                   </form>
 
-                  <!-- Check de verificación independiente (Encargado en revisión) -->
                   {#if data.tarea.estado === 'EN_REVISION' || data.tarea.estado === 'TERMINADA'}
                     <form method="POST" action="?/toggleCriterio" use:enhance class="shrink-0">
                       <input type="hidden" name="criterioId" value={c.id} />
@@ -424,63 +484,82 @@
           {/if}
         </Panel>
 
-        <!-- TW-09: Conversación de la tarea -->
+        <!-- TW-09 y TW-10: Chat con Timeline de Actividad Integrado (reemplaza al antiguo panel Historial) -->
         <div id="conversacion">
           <Panel
-            titulo="Chat"
-            descripcion="Comunicación directa entre Miembro y Encargado vinculada a esta asignación."
+            titulo="Chat y Actividad (TW-09 · TW-10)"
+            descripcion="Secuencia temporal unificada de mensajes y eventos de la tarea entre Miembro y Encargado."
           >
             <div
               bind:this={contenedorChatRef}
-              class="max-h-96 space-y-3.5 overflow-y-auto rounded-xl border border-tezcat-border bg-tezcat-bg p-4"
+              class="max-h-[28rem] space-y-3.5 overflow-y-auto rounded-xl border border-tezcat-border bg-tezcat-bg p-4"
             >
-              {#if !data.comentarios || data.comentarios.length === 0}
+              {#if !data.timeline || data.timeline.length === 0}
                 <div class="flex flex-col items-center justify-center py-8 text-center text-tezcat-textMuted">
                   <span class="material-symbols-outlined text-3xl text-tezcat-cyan/60">forum</span>
                   <p class="mt-2 text-xs font-semibold text-tezcat-textSecondary">
-                    Aún no hay mensajes en esta tarea
+                    Sin actividad ni mensajes registrados
                   </p>
                   <p class="mt-0.5 max-w-sm text-[11px]">
                     Escribe un comentario abajo para resolver dudas sobre los criterios, reportar bloqueos o retroalimentar evidencias.
                   </p>
                 </div>
               {:else}
-                {#each data.comentarios as msg (msg.id)}
-                  {@const esMio = msg.autorId === data.user.id}
-                  <div class="flex items-start gap-3 {esMio ? 'flex-row-reverse' : ''}">
-                    <div
-                      class="flex size-8 shrink-0 items-center justify-center rounded-lg border font-mono text-xs font-bold
-                        {msg.autorRol === 'ENCARGADO'
-                          ? 'border-tezcat-cyan/40 bg-tezcat-cyan/15 text-tezcat-cyan'
-                          : 'border-tezcat-border bg-tezcat-surfaceAlt text-tezcat-textSecondary'}"
-                    >
-                      {iniciales(msg.autorNombre)}
-                    </div>
-
-                    <div class="flex max-w-[80%] flex-col {esMio ? 'items-end' : 'items-start'}">
-                      <div class="mb-1 flex flex-wrap items-center gap-1.5 font-mono text-[10px]">
-                        <span class="font-semibold text-tezcat-textPrimary">{msg.autorNombre}</span>
-                        <span
-                          class="rounded px-1.5 py-0.5 text-[9px] uppercase
-                            {msg.autorRol === 'ENCARGADO'
-                              ? 'bg-tezcat-cyan/15 text-tezcat-cyan'
-                              : 'bg-tezcat-surfaceAlt text-tezcat-textSecondary'}"
-                        >
-                          {msg.autorRol}
-                        </span>
-                        <span class="text-tezcat-textMuted">· {fecha(msg.creadoEn)}</span>
-                      </div>
-
+                {#each data.timeline as item (`${item.tipoItem}-${item.id}`)}
+                  {#if item.tipoItem === 'EVENTO'}
+                    <!-- TW-10: Evento del historial renderizado como mensaje central minimalista -->
+                    <div class="my-2 flex items-center justify-center gap-2.5 px-1">
+                      <span class="h-px flex-1 bg-tezcat-border/50"></span>
                       <div
-                        class="rounded-2xl border px-4 py-2.5 text-sm leading-relaxed
-                          {esMio
-                            ? 'rounded-tr-xs border-tezcat-cyan/40 bg-tezcat-cyan/10 text-tezcat-textPrimary'
-                            : 'rounded-tl-xs border-tezcat-border bg-tezcat-surfaceAlt text-tezcat-textPrimary'}"
+                        class="inline-flex max-w-[90%] flex-wrap items-center justify-center gap-1.5 rounded-full border px-3 py-1 text-center font-mono text-[10px] leading-tight
+                          {claseEvento(item)}"
                       >
-                        <p class="whitespace-pre-line">{msg.contenido}</p>
+                        <span class="material-symbols-outlined text-xs">{iconoEvento(item)}</span>
+                        <span class="font-semibold">{textoEvento(item)}</span>
+                        <span class="opacity-75">
+                          · {fecha(item.creadoEn)}{item.actorNombre ? ` · ${item.actorNombre}` : ''}
+                        </span>
+                      </div>
+                      <span class="h-px flex-1 bg-tezcat-border/50"></span>
+                    </div>
+                  {:else}
+                    <!-- TW-09: Burbuja de mensaje de conversación -->
+                    {@const esMio = item.autorId === data.user.id}
+                    <div class="flex items-start gap-3 {esMio ? 'flex-row-reverse' : ''}">
+                      <div
+                        class="flex size-8 shrink-0 items-center justify-center rounded-lg border font-mono text-xs font-bold
+                          {item.autorRol === 'ENCARGADO'
+                            ? 'border-tezcat-cyan/40 bg-tezcat-cyan/15 text-tezcat-cyan'
+                            : 'border-tezcat-border bg-tezcat-surfaceAlt text-tezcat-textSecondary'}"
+                      >
+                        {iniciales(item.autorNombre)}
+                      </div>
+
+                      <div class="flex max-w-[80%] flex-col {esMio ? 'items-end' : 'items-start'}">
+                        <div class="mb-1 flex flex-wrap items-center gap-1.5 font-mono text-[10px]">
+                          <span class="font-semibold text-tezcat-textPrimary">{item.autorNombre}</span>
+                          <span
+                            class="rounded px-1.5 py-0.5 text-[9px] uppercase
+                              {item.autorRol === 'ENCARGADO'
+                                ? 'bg-tezcat-cyan/15 text-tezcat-cyan'
+                                : 'bg-tezcat-surfaceAlt text-tezcat-textSecondary'}"
+                          >
+                            {item.autorRol}
+                          </span>
+                          <span class="text-tezcat-textMuted">· {fecha(item.creadoEn)}</span>
+                        </div>
+
+                        <div
+                          class="rounded-2xl border px-4 py-2.5 text-sm leading-relaxed
+                            {esMio
+                              ? 'rounded-tr-xs border-tezcat-cyan/40 bg-tezcat-cyan/10 text-tezcat-textPrimary'
+                              : 'rounded-tl-xs border-tezcat-border bg-tezcat-surfaceAlt text-tezcat-textPrimary'}"
+                        >
+                          <p class="whitespace-pre-line">{item.contenido}</p>
+                        </div>
                       </div>
                     </div>
-                  </div>
+                  {/if}
                 {/each}
               {/if}
             </div>
@@ -526,30 +605,7 @@
             </form>
           </Panel>
         </div>
-
-        <!-- Historial de eventos -->
-        <Panel titulo="Historial">
-          {#if data.eventos.length === 0}
-            <p class="text-sm text-tezcat-textMuted">Sin eventos registrados.</p>
-          {:else}
-            <ol class="relative space-y-5 border-l border-tezcat-border pl-5">
-              {#each data.eventos as e (e.id)}
-                <li class="relative">
-                  <span class="absolute top-0.5 -left-[26px] flex size-3 items-center justify-center rounded-full bg-tezcat-bg ring-4 ring-tezcat-bg">
-                    <span class="size-2 rounded-full bg-tezcat-cyan"></span>
-                  </span>
-                  <p class="flex items-center gap-2 text-sm font-semibold">
-                    <span class="material-symbols-outlined text-base text-tezcat-cyan">{iconoEvento[e.tipo] ?? 'info'}</span>
-                    {textoEvento(e)}
-                  </p>
-                  <p class="mt-0.5 text-xs text-tezcat-textSecondary">
-                    {fecha(e.creadoEn)}{e.actorNombre ? ` · ${e.actorNombre}` : ''}
-                  </p>
-                </li>
-              {/each}
-            </ol>
-          {/if}
-        </Panel>
+        <!-- TW-10: El panel independiente "Historial" fue eliminado e integrado arriba dentro del Chat -->
       </div>
 
       <!-- Columna lateral -->
@@ -650,7 +706,6 @@
                       </div>
                     </a>
 
-                    <!-- Eliminar archivo (solo autor o encargado) -->
                     {#if data.user.rol === 'ENCARGADO' || data.user.id === a.subidoPorId || data.user.rol === 'ADMIN'}
                       <form method="POST" action="?/eliminarArchivo" use:enhance>
                         <input type="hidden" name="archivoId" value={a.id} />
@@ -680,7 +735,6 @@
             </ul>
           {/if}
 
-          <!-- Selector y formulario para subir evidencias -->
           {#if data.tarea.estado !== 'TERMINADA'}
             <div class="space-y-3 border-t border-tezcat-border pt-3">
               <div class="grid grid-cols-2 gap-1 rounded-lg bg-tezcat-bg p-1 font-mono text-[10px]">
