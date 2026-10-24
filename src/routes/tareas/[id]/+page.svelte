@@ -57,7 +57,7 @@
     d ? new Date(d).toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' }) : 'Sin fecha';
 
   // =========================================================================
-  // LÓGICA TW-10: Formateadores de Eventos Centrales dentro del Chat
+  // LÓGICA TW-10 y TW-11: Formateadores de Eventos Centrales dentro del Chat
   // =========================================================================
   type EventoItem = Extract<(typeof data.timeline)[number], { tipoItem: 'EVENTO' }>;
 
@@ -67,6 +67,7 @@
       a?: string;
       nombre?: string;
       esEnlace?: boolean;
+      nuevoResponsableNombre?: string;
     } | null;
 
     if (e.tipo === 'TAREA_CREADA') {
@@ -95,6 +96,15 @@
     if (e.tipo === 'ARCHIVO_ELIMINADO') {
       return `Eliminó adjunto: ${detalle?.nombre ?? 'archivo'}`;
     }
+    if (e.tipo === 'SOLICITUD_REASIGNACION') {
+      return 'Solicitó cambio de asignación de la tarea';
+    }
+    if (e.tipo === 'REASIGNACION_APROBADA') {
+      return `Reasignación aprobada · Nuevo responsable: ${detalle?.nuevoResponsableNombre ?? 'integrante'}`;
+    }
+    if (e.tipo === 'REASIGNACION_RECHAZADA') {
+      return 'Solicitud de cambio de asignación denegada';
+    }
     return e.tipo;
   }
 
@@ -110,6 +120,9 @@
     }
     if (e.tipo === 'ARCHIVO_SUBIDO') return detalle?.esEnlace ? 'link' : 'attach_file';
     if (e.tipo === 'ARCHIVO_ELIMINADO') return 'delete';
+    if (e.tipo === 'SOLICITUD_REASIGNACION') return 'swap_horiz';
+    if (e.tipo === 'REASIGNACION_APROBADA') return 'how_to_reg';
+    if (e.tipo === 'REASIGNACION_RECHAZADA') return 'block';
     return 'info';
   }
 
@@ -129,8 +142,14 @@
         return 'border-emerald-400/35 bg-emerald-400/10 text-emerald-300';
       }
     }
-    if (e.tipo === 'ARCHIVO_ELIMINADO') {
+    if (e.tipo === 'ARCHIVO_ELIMINADO' || e.tipo === 'REASIGNACION_RECHAZADA') {
       return 'border-red-400/30 bg-red-400/10 text-red-300';
+    }
+    if (e.tipo === 'SOLICITUD_REASIGNACION') {
+      return 'border-amber-400/35 bg-amber-400/10 text-amber-300';
+    }
+    if (e.tipo === 'REASIGNACION_APROBADA') {
+      return 'border-emerald-400/35 bg-emerald-400/10 text-emerald-300';
     }
     return 'border-tezcat-border/80 bg-tezcat-surfaceAlt/60 text-tezcat-textSecondary';
   }
@@ -156,7 +175,7 @@
   );
 
   // =========================================================================
-  // LÓGICA TW-07: Progreso del Checklist (Responsable vs. Encargado)
+  // LÓGICA TW-07 y TW-11: Progreso del Checklist y Permisos de Reasignación
   // =========================================================================
   const totalCriterios = $derived(data.criterios.length);
   const criteriosCompletados = $derived(data.criterios.filter((c) => c.completado).length);
@@ -169,20 +188,25 @@
     totalCriterios === 0 ? 100 : Math.round((criteriosVerificados / totalCriterios) * 100)
   );
 
-  const esResponsable = $derived(data.user.id === data.responsable?.id || data.user.rol === 'MIEMBRO');
+  const reasignadaDelUsuario = $derived(Boolean(data.reasignadaDelUsuario));
+  const esResponsableActual = $derived(data.user.id === data.responsable?.id);
   const esEncargadoORevisor = $derived(data.user.rol === 'ENCARGADO' || data.user.id === data.revisor?.id);
   const puedeEliminar = $derived(
-    data.user.rol === 'ADMIN' ||
-    (data.user.rol === 'ENCARGADO' && data.user.departamentoId === data.tarea.departamentoId) ||
-    data.user.id === data.creador?.id
+    !reasignadaDelUsuario &&
+      (data.user.rol === 'ADMIN' ||
+        (data.user.rol === 'ENCARGADO' && data.user.departamentoId === data.tarea.departamentoId) ||
+        data.user.id === data.creador?.id)
   );
 
   const puedeMarcarAvance = $derived(
-    (esResponsable || esEncargadoORevisor) &&
+    !reasignadaDelUsuario &&
+      (esResponsableActual || esEncargadoORevisor) &&
       (data.tarea.estado === 'ASIGNADA' || data.tarea.estado === 'EN_PROCESO')
   );
 
-  const puedeVerificarRevision = $derived(esEncargadoORevisor && data.tarea.estado === 'EN_REVISION');
+  const puedeVerificarRevision = $derived(
+    !reasignadaDelUsuario && esEncargadoORevisor && data.tarea.estado === 'EN_REVISION'
+  );
 
   function transicionBloqueada(destino: string): { bloqueado: boolean; motivo: string } {
     if (destino === 'EN_REVISION' && porcentajeCompletado < 100) {
@@ -199,6 +223,18 @@
     }
     return { bloqueado: false, motivo: '' };
   }
+
+  // =========================================================================
+  // LÓGICA TW-11: Estados del Formulario de Solicitud y Resolución de Cambio
+  // =========================================================================
+  let mostrarFormularioSolicitud = $state(false);
+  let motivoSolicitud = $state('');
+  let enviandoSolicitud = $state(false);
+
+  let modoResolucionEncargado = $state<'APROBAR' | 'DECLINAR'>('APROBAR');
+  let nuevoResponsableId = $state('');
+  let motivoRechazo = $state('');
+  let enviandoResolucion = $state(false);
 
   // =========================================================================
   // LÓGICA TW-08: Gestión de Evidencias y Recursos
@@ -221,7 +257,6 @@
   let enviandoComentario = $state(false);
   let contenedorChatRef = $state<HTMLDivElement | null>(null);
 
-  // TW-10: Auto-scroll al final cuando se agregan nuevos mensajes o eventos al timeline
   $effect(() => {
     const _totalItems = data.timeline?.length ?? 0;
     if (contenedorChatRef && _totalItems > 0) {
@@ -290,10 +325,17 @@
         <span class="rounded-md border border-tezcat-border bg-tezcat-surfaceAlt px-2 py-0.5 font-mono text-[11px] tracking-wider text-tezcat-textSecondary uppercase">
           {data.tarea.tipo}
         </span>
-        <span class="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-0.5 font-mono text-[11px] font-semibold tracking-wider uppercase {claseEstado[data.tarea.estado] ?? ''}">
-          <span class="material-symbols-outlined text-sm">{iconoEstado[data.tarea.estado] ?? 'label'}</span>
-          {textoEstado[data.tarea.estado] ?? data.tarea.estado}
-        </span>
+        {#if reasignadaDelUsuario}
+          <span class="inline-flex items-center gap-1.5 rounded-md border border-amber-400/50 bg-amber-400/15 px-2.5 py-0.5 font-mono text-[11px] font-bold tracking-wider text-amber-300 uppercase">
+            <span class="material-symbols-outlined text-sm">swap_horiz</span>
+            Reasignada
+          </span>
+        {:else}
+          <span class="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-0.5 font-mono text-[11px] font-semibold tracking-wider uppercase {claseEstado[data.tarea.estado] ?? ''}">
+            <span class="material-symbols-outlined text-sm">{iconoEstado[data.tarea.estado] ?? 'label'}</span>
+            {textoEstado[data.tarea.estado] ?? data.tarea.estado}
+          </span>
+        {/if}
       </div>
 
       <h1 class="mt-3 text-2xl font-bold tracking-tight text-white sm:text-3xl">{data.tarea.titulo}</h1>
@@ -325,7 +367,25 @@
       </ol>
     </div>
 
-    <!-- Alertas y mensajes -->
+    <!-- TW-11: Aviso Automático de Bloqueo para el Miembro al que se le quitó la tarea -->
+    {#if reasignadaDelUsuario}
+      <div
+        role="status"
+        class="flex items-start gap-3 rounded-2xl border border-amber-400/50 bg-amber-400/10 p-4 text-sm text-amber-200 shadow-lg"
+      >
+        <span class="material-symbols-outlined mt-0.5 shrink-0 text-xl text-amber-300">verified_user</span>
+        <div>
+          <p class="font-bold text-amber-300">
+            Se ha validado la reasignación de la actividad que se le había imputado.
+          </p>
+          <p class="mt-1 text-xs text-amber-200/80">
+            Esta tarea fue asignada a <strong>{data.responsable?.nombre ?? 'otro integrante'}</strong>. Tu acceso a esta actividad ahora es únicamente informativo y no puedes realizar acciones en el checklist, archivos ni chat.
+          </p>
+        </div>
+      </div>
+    {/if}
+
+    <!-- Alertas y mensajes de formularios -->
     {#if form?.error}
       <div role="alert" class="flex items-start gap-2.5 rounded-lg border border-tezcat-danger/40 bg-tezcat-danger/10 p-3 text-xs text-red-300">
         <span class="material-symbols-outlined shrink-0 text-base">error</span>
@@ -338,56 +398,136 @@
       </div>
     {/if}
 
-    <!-- Acciones de transición de estado (TW-05 y TW-07) -->
-    {#if data.transicionesPermitidas.length > 0}
-      <section class="rounded-2xl border border-tezcat-border/80 bg-tezcat-card/90 p-5 shadow-2xl backdrop-blur-md">
-        <div class="flex flex-wrap items-center justify-between gap-2">
-          <p class={etiqueta}>Actualizar avance</p>
-          {#if data.tarea.estado === 'EN_PROCESO' && porcentajeCompletado < 100}
-            <span class="inline-flex items-center gap-1 font-mono text-[11px] text-amber-300">
-              <span class="material-symbols-outlined text-sm">info</span>
-              Marca el 100% del checklist ({criteriosCompletados}/{totalCriterios}) para solicitar revisión
-            </span>
-          {:else if data.tarea.estado === 'EN_REVISION' && esEncargadoORevisor && porcentajeVerificado < 100}
-            <span class="inline-flex items-center gap-1 font-mono text-[11px] text-violet-300">
-              <span class="material-symbols-outlined text-sm">fact_check</span>
-              Verifica manualmente los criterios ({criteriosVerificados}/{totalCriterios}) antes de aprobar
-            </span>
-          {/if}
+    <!-- =============================================================== -->
+    <!-- TW-11: PANEL EXCLUSIVO DEL ENCARGADO PARA RESOLVER REASIGNACIÓN -->
+    <!-- =============================================================== -->
+    {#if esEncargadoORevisor && data.solicitudPendiente}
+      <section class="rounded-2xl border border-amber-400/50 bg-tezcat-card/95 p-5 shadow-2xl backdrop-blur-md">
+        <div class="flex flex-wrap items-start justify-between gap-3">
+          <div class="flex items-start gap-3">
+            <span class="material-symbols-outlined mt-0.5 text-2xl text-amber-300">swap_horiz</span>
+            <div>
+              <p class="font-mono text-[10px] font-bold tracking-wider text-amber-300 uppercase">
+                TW-11 · Solicitud de cambio de asignación pendiente
+              </p>
+              <h2 class="mt-0.5 text-base font-bold text-white">
+                {data.solicitudPendiente.solicitanteNombre} solicita transferir esta tarea
+              </h2>
+              <p class="mt-1 text-xs text-tezcat-textSecondary">
+                Solicitada el {fecha(data.solicitudPendiente.creadaEn)}
+              </p>
+            </div>
+          </div>
         </div>
 
-        <div class="mt-3 flex flex-wrap gap-3">
-          {#each data.transicionesPermitidas as destino (destino)}
-            {@const candado = transicionBloqueada(destino)}
-            <form
-              method="POST"
-              action="?/cambiarEstado"
-              use:enhance={() => {
-                enviando = true;
-                return async ({ update }) => {
-                  enviando = false;
-                  await update();
-                };
-              }}
-            >
-              <input type="hidden" name="estado" value={destino} />
-              <button
-                type="submit"
-                disabled={enviando || candado.bloqueado}
-                title={candado.bloqueado ? candado.motivo : ''}
-                class="inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition-all active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-45
-                  {destino === 'TERMINADA'
-                    ? 'border-transparent bg-linear-to-r from-tezcat-cyan to-teal-400 text-slate-950 shadow-glow-cyan hover:from-tezcat-cyanHover hover:to-teal-300'
-                    : destino === 'EN_PROCESO'
-                      ? 'border-tezcat-cyan/50 bg-tezcat-cyan/10 text-tezcat-cyan hover:bg-tezcat-cyan/20'
-                      : 'border-tezcat-borderHighlight bg-tezcat-surfaceAlt text-tezcat-textPrimary hover:border-tezcat-cyan/50'}"
-              >
-                <span class="material-symbols-outlined text-lg">{iconoBoton[destino] ?? 'sync_alt'}</span>
-                {textoBoton(destino)}
-              </button>
-            </form>
-          {/each}
+        <div class="mt-3 rounded-xl border border-tezcat-border bg-tezcat-bg p-3.5 text-xs">
+          <p class="font-mono text-[10px] font-semibold tracking-wider text-tezcat-textMuted uppercase">
+            Motivo del miembro:
+          </p>
+          <p class="mt-1 leading-relaxed whitespace-pre-line text-tezcat-textPrimary">
+            "{data.solicitudPendiente.motivo}"
+          </p>
         </div>
+
+        <!-- Pestañas: Aprobar y Reasignar vs Declinar Solicitud -->
+        <div class="mt-4 grid grid-cols-2 gap-2 rounded-xl bg-tezcat-bg p-1 font-mono text-xs">
+          <button
+            type="button"
+            onclick={() => (modoResolucionEncargado = 'APROBAR')}
+            class="flex items-center justify-center gap-1.5 rounded-lg py-2 font-bold uppercase transition-colors
+              {modoResolucionEncargado === 'APROBAR'
+                ? 'bg-emerald-400/20 text-emerald-300 border border-emerald-400/40'
+                : 'text-tezcat-textMuted hover:text-tezcat-textPrimary'}"
+          >
+            <span class="material-symbols-outlined text-base">how_to_reg</span>
+            Aprobar y reasignar
+          </button>
+          <button
+            type="button"
+            onclick={() => (modoResolucionEncargado = 'DECLINAR')}
+            class="flex items-center justify-center gap-1.5 rounded-lg py-2 font-bold uppercase transition-colors
+              {modoResolucionEncargado === 'DECLINAR'
+                ? 'bg-red-400/20 text-red-300 border border-red-400/40'
+                : 'text-tezcat-textMuted hover:text-tezcat-textPrimary'}"
+          >
+            <span class="material-symbols-outlined text-base">block</span>
+            Declinar cambio
+          </button>
+        </div>
+
+        <form
+          method="POST"
+          action="?/resolverReasignacion"
+          class="mt-4 space-y-3"
+          use:enhance={() => {
+            enviandoResolucion = true;
+            return async ({ update }) => {
+              enviandoResolucion = false;
+              motivoRechazo = '';
+              nuevoResponsableId = '';
+              await update();
+            };
+          }}
+        >
+          <input type="hidden" name="decision" value={modoResolucionEncargado} />
+
+          {#if modoResolucionEncargado === 'APROBAR'}
+            <div>
+              <label for="nuevoResponsableId" class={etiqueta}>
+                Selecciona al nuevo trabajador responsable *
+              </label>
+              <select
+                id="nuevoResponsableId"
+                name="nuevoResponsableId"
+                required
+                bind:value={nuevoResponsableId}
+                class="mt-1.5 w-full rounded-xl border border-tezcat-border bg-tezcat-bg px-3.5 py-2.5 text-xs text-tezcat-textPrimary focus:border-tezcat-cyan focus:outline-none [&>option]:bg-tezcat-card"
+              >
+                <option value="">Selecciona a un integrante de tu departamento…</option>
+                {#each data.miembrosParaReasignar ?? [] as m (m.id)}
+                  <option value={m.id}>{m.nombre} ({m.rol})</option>
+                {/each}
+              </select>
+              <p class="mt-1.5 text-[11px] text-tezcat-textMuted">
+                Al aprobar, {data.solicitudPendiente.solicitanteNombre} verá la tarea como "Reasignada" y ya no podrá usar el chat ni modificar archivos.
+              </p>
+            </div>
+
+            <button
+              type="submit"
+              disabled={enviandoResolucion || !nuevoResponsableId}
+              class="inline-flex items-center gap-2 rounded-xl bg-linear-to-r from-emerald-400 to-teal-400 px-4 py-2.5 text-xs font-bold text-slate-950 transition-all hover:opacity-95 disabled:opacity-45"
+            >
+              <span class="material-symbols-outlined text-base">check_circle</span>
+              Confirmar reasignación
+            </button>
+          {:else}
+            <div>
+              <label for="motivoRechazo" class={etiqueta}>
+                Explica por qué no se puede cambiar la asignación (se enviará al chat) *
+              </label>
+              <textarea
+                id="motivoRechazo"
+                name="motivoRechazo"
+                rows="2"
+                required
+                maxlength="1000"
+                bind:value={motivoRechazo}
+                placeholder="Escribe el motivo por el cual se deniega el cambio…"
+                class="mt-1.5 w-full rounded-xl border border-tezcat-border bg-tezcat-bg px-3.5 py-2 text-xs text-tezcat-textPrimary placeholder-tezcat-textMuted focus:border-red-400 focus:outline-none"
+              ></textarea>
+            </div>
+
+            <button
+              type="submit"
+              disabled={enviandoResolucion || !motivoRechazo.trim()}
+              class="inline-flex items-center gap-2 rounded-xl border border-red-400/50 bg-red-400/15 px-4 py-2.5 text-xs font-bold text-red-300 transition-colors hover:bg-red-400/25 disabled:opacity-45"
+            >
+              <span class="material-symbols-outlined text-base">cancel</span>
+              Denegar solicitud y enviar motivo al chat
+            </button>
+          {/if}
+        </form>
       </section>
     {/if}
 
@@ -403,9 +543,11 @@
           {/if}
         </Panel>
 
-        <!-- TW-07: Checklist de Criterios -->
+        <!-- =============================================================== -->
+        <!-- TW-07: Checklist de Criterios + Botones de Avance en el mismo recuadro -->
+        <!-- =============================================================== -->
         <Panel
-          titulo="Criterios de aceptación (Checklist · TW-07)"
+          titulo="Checklist"
           descripcion={puedeVerificarRevision
             ? 'Modo revisor: verifica manualmente cada criterio conforme compruebes su cumplimiento antes de aprobar.'
             : 'Marca cada condición conforme avances para habilitar el envío a revisión.'}
@@ -482,13 +624,66 @@
               {/each}
             </ul>
           {/if}
+
+          <!-- Botones de avance y envío integrados en la parte inferior del mismo Checklist -->
+          {#if data.transicionesPermitidas.length > 0 && !reasignadaDelUsuario}
+            <div class="mt-5 border-t border-tezcat-border pt-4">
+              <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <span class={etiqueta}>Acción de entrega / estado</span>
+                {#if data.tarea.estado === 'EN_PROCESO' && porcentajeCompletado < 100}
+                  <span class="inline-flex items-center gap-1 font-mono text-[11px] text-amber-300">
+                    <span class="material-symbols-outlined text-sm">info</span>
+                    Marca el 100% del checklist ({criteriosCompletados}/{totalCriterios}) para habilitar el envío a revisión
+                  </span>
+                {:else if data.tarea.estado === 'EN_REVISION' && esEncargadoORevisor && porcentajeVerificado < 100}
+                  <span class="inline-flex items-center gap-1 font-mono text-[11px] text-violet-300">
+                    <span class="material-symbols-outlined text-sm">fact_check</span>
+                    Verifica manualmente los criterios ({criteriosVerificados}/{totalCriterios}) antes de aprobar
+                  </span>
+                {/if}
+              </div>
+
+              <div class="flex flex-wrap gap-3">
+                {#each data.transicionesPermitidas as destino (destino)}
+                  {@const candado = transicionBloqueada(destino)}
+                  <form
+                    method="POST"
+                    action="?/cambiarEstado"
+                    use:enhance={() => {
+                      enviando = true;
+                      return async ({ update }) => {
+                        enviando = false;
+                        await update();
+                      };
+                    }}
+                  >
+                    <input type="hidden" name="estado" value={destino} />
+                    <button
+                      type="submit"
+                      disabled={enviando || candado.bloqueado}
+                      title={candado.bloqueado ? candado.motivo : ''}
+                      class="inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition-all active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-45
+                        {destino === 'TERMINADA' || destino === 'EN_REVISION'
+                          ? 'border-transparent bg-linear-to-r from-tezcat-cyan to-teal-400 text-slate-950 shadow-glow-cyan hover:from-tezcat-cyanHover hover:to-teal-300'
+                          : destino === 'EN_PROCESO'
+                            ? 'border-tezcat-cyan/50 bg-tezcat-cyan/10 text-tezcat-cyan hover:bg-tezcat-cyan/20'
+                            : 'border-tezcat-borderHighlight bg-tezcat-surfaceAlt text-tezcat-textPrimary hover:border-tezcat-cyan/50'}"
+                    >
+                      <span class="material-symbols-outlined text-lg">{iconoBoton[destino] ?? 'sync_alt'}</span>
+                      {textoBoton(destino)}
+                    </button>
+                  </form>
+                {/each}
+              </div>
+            </div>
+          {/if}
         </Panel>
 
-        <!-- TW-09 y TW-10: Chat con Timeline de Actividad Integrado (reemplaza al antiguo panel Historial) -->
+        <!-- TW-09 y TW-10: Chat con Timeline de Actividad Integrado -->
         <div id="conversacion">
           <Panel
-            titulo="Chat y Actividad (TW-09 · TW-10)"
-            descripcion="Secuencia temporal unificada de mensajes y eventos de la tarea entre Miembro y Encargado."
+            titulo="Chat"
+            descripcion=""
           >
             <div
               bind:this={contenedorChatRef}
@@ -564,48 +759,56 @@
               {/if}
             </div>
 
-            <!-- Redactar mensaje -->
-            <form
-              method="POST"
-              action="?/comentar"
-              class="mt-3 space-y-2"
-              use:enhance={() => {
-                enviandoComentario = true;
-                return async ({ update }) => {
-                  enviandoComentario = false;
-                  nuevoComentario = '';
-                  await update();
-                };
-              }}
-            >
-              <div class="flex items-end gap-2.5">
-                <textarea
-                  name="contenido"
-                  rows="2"
-                  required
-                  maxlength="2000"
-                  bind:value={nuevoComentario}
-                  onkeydown={(e) => {
-                    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && nuevoComentario.trim()) {
-                      e.currentTarget.form?.requestSubmit();
-                    }
-                  }}
-                  placeholder="Escribe un mensaje para la tarea… (Ctrl + Enter para enviar)"
-                  class="flex-1 resize-y rounded-xl border border-tezcat-border bg-tezcat-bg px-3.5 py-2.5 text-sm text-tezcat-textPrimary placeholder-tezcat-textMuted focus:border-tezcat-cyan focus:ring-1 focus:ring-tezcat-cyan focus:outline-none"
-                ></textarea>
-                <button
-                  type="submit"
-                  disabled={enviandoComentario || !nuevoComentario.trim()}
-                  class="inline-flex items-center gap-1.5 rounded-xl bg-linear-to-r from-tezcat-cyan to-teal-400 px-4 py-2.5 text-xs font-bold text-slate-950 shadow-glow-cyan transition-all hover:from-tezcat-cyanHover hover:to-teal-300 disabled:opacity-45"
-                >
-                  <span class="material-symbols-outlined text-base">send</span>
-                  Enviar
-                </button>
+            <!-- Redactar mensaje (bloqueado si la tarea fue reasignada a otra persona) -->
+            {#if reasignadaDelUsuario}
+              <div class="mt-3 flex items-center gap-2 rounded-xl border border-amber-400/35 bg-amber-400/10 px-3.5 py-2.5 text-xs text-amber-200">
+                <span class="material-symbols-outlined text-base text-amber-300">lock</span>
+                <span>
+                  Se ha validado la reasignación de esta actividad; el envío de mensajes en el chat está deshabilitado para tu cuenta.
+                </span>
               </div>
-            </form>
+            {:else}
+              <form
+                method="POST"
+                action="?/comentar"
+                class="mt-3 space-y-2"
+                use:enhance={() => {
+                  enviandoComentario = true;
+                  return async ({ update }) => {
+                    enviandoComentario = false;
+                    nuevoComentario = '';
+                    await update();
+                  };
+                }}
+              >
+                <div class="flex items-end gap-2.5">
+                  <textarea
+                    name="contenido"
+                    rows="2"
+                    required
+                    maxlength="2000"
+                    bind:value={nuevoComentario}
+                    onkeydown={(e) => {
+                      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && nuevoComentario.trim()) {
+                        e.currentTarget.form?.requestSubmit();
+                      }
+                    }}
+                    placeholder="Escribe un mensaje para la tarea… (Ctrl + Enter para enviar)"
+                    class="flex-1 resize-y rounded-xl border border-tezcat-border bg-tezcat-bg px-3.5 py-2.5 text-sm text-tezcat-textPrimary placeholder-tezcat-textMuted focus:border-tezcat-cyan focus:ring-1 focus:ring-tezcat-cyan focus:outline-none"
+                  ></textarea>
+                  <button
+                    type="submit"
+                    disabled={enviandoComentario || !nuevoComentario.trim()}
+                    class="inline-flex items-center gap-1.5 rounded-xl bg-linear-to-r from-tezcat-cyan to-teal-400 px-4 py-2.5 text-xs font-bold text-slate-950 shadow-glow-cyan transition-all hover:from-tezcat-cyanHover hover:to-teal-300 disabled:opacity-45"
+                  >
+                    <span class="material-symbols-outlined text-base">send</span>
+                    Enviar
+                  </button>
+                </div>
+              </form>
+            {/if}
           </Panel>
         </div>
-        <!-- TW-10: El panel independiente "Historial" fue eliminado e integrado arriba dentro del Chat -->
       </div>
 
       <!-- Columna lateral -->
@@ -672,10 +875,110 @@
           </dl>
         </Panel>
 
+        <!-- =============================================================== -->
+        <!-- TW-11: PANEL DEL MIEMBRO PARA SOLICITAR REASIGNACIÓN (20% DÍAS) -->
+        <!-- =============================================================== -->
+        {#if esResponsableActual && !reasignadaDelUsuario && (data.tarea.estado === 'ASIGNADA' || data.tarea.estado === 'EN_PROCESO')}
+          <Panel
+            titulo="Solicitar Reasignacion"
+            descripcion="Puedes solicitar al encargado pasar esta tarea a otro integrante por un corto periodo de tiempo."
+          >
+            {#if data.rechazoReasignacionReciente}
+              <div class="mb-3 rounded-xl border border-red-400/40 bg-red-400/10 p-3 text-xs text-red-200">
+                <p class="font-bold text-red-300">No se pudo cambiar tu asignación:</p>
+                <p class="mt-1 whitespace-pre-line">{data.rechazoReasignacionReciente.motivoRechazo}</p>
+              </div>
+            {/if}
+
+            {#if data.solicitudPendiente}
+              <div class="rounded-xl border border-amber-400/40 bg-amber-400/10 p-3.5 text-xs text-amber-200">
+                <div class="flex items-center gap-2 font-bold text-amber-300">
+                  <span class="material-symbols-outlined text-base">hourglass_top</span>
+                  <span>Solicitud enviada al encargado</span>
+                </div>
+                <p class="mt-1.5 text-amber-100/80">
+                  Motivo enviado: "{data.solicitudPendiente.motivo}"
+                </p>
+              </div>
+            {:else if data.plazoReasignacion?.dentroDePlazo}
+              <div class="space-y-3 text-xs">
+                <div class="rounded-xl border border-tezcat-border bg-tezcat-bg p-3">
+                  <p class="font-mono text-[10px] text-tezcat-cyan uppercase">
+                    Plazo disponible
+                  </p>
+                  <p class="mt-1 text-tezcat-textSecondary">
+                    Tienes hasta el <strong>{fecha(data.plazoReasignacion.fechaLimiteSolicitud)}</strong> para solicitar reasignación.
+                  </p>
+                </div>
+
+                {#if !mostrarFormularioSolicitud}
+                  <button
+                    type="button"
+                    onclick={() => (mostrarFormularioSolicitud = true)}
+                    class="flex w-full items-center justify-center gap-1.5 rounded-xl border border-amber-400/50 bg-amber-400/10 px-3 py-2 text-xs font-semibold text-amber-300 transition-colors hover:bg-amber-400/20"
+                  >
+                    <span class="material-symbols-outlined text-base">swap_horiz</span>
+                    Solicitar cambio de asignación
+                  </button>
+                {:else}
+                  <form
+                    method="POST"
+                    action="?/solicitarReasignacion"
+                    class="space-y-2.5"
+                    use:enhance={() => {
+                      enviandoSolicitud = true;
+                      return async ({ update }) => {
+                        enviandoSolicitud = false;
+                        mostrarFormularioSolicitud = false;
+                        motivoSolicitud = '';
+                        await update();
+                      };
+                    }}
+                  >
+                    <label for="motivoSolicitud" class={etiqueta}>
+                      ¿Por qué solicitas el cambio de esta actividad? *
+                    </label>
+                    <textarea
+                      id="motivoSolicitud"
+                      name="motivo"
+                      rows="3"
+                      required
+                      maxlength="1000"
+                      bind:value={motivoSolicitud}
+                      placeholder="Explica al encargado por qué necesitas que esta tarea se asigne a otra persona…"
+                      class="w-full rounded-xl border border-tezcat-border bg-tezcat-bg px-3 py-2 text-xs text-tezcat-textPrimary placeholder-tezcat-textMuted focus:border-tezcat-cyan focus:outline-none"
+                    ></textarea>
+                    <div class="flex gap-2">
+                      <button
+                        type="button"
+                        onclick={() => (mostrarFormularioSolicitud = false)}
+                        class="flex-1 rounded-xl border border-tezcat-border py-2 text-xs font-semibold text-tezcat-textSecondary hover:text-white"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={enviandoSolicitud || !motivoSolicitud.trim()}
+                        class="flex-1 rounded-xl bg-amber-400 py-2 text-xs font-bold text-slate-950 hover:bg-amber-300 disabled:opacity-45"
+                      >
+                        Enviar solicitud
+                      </button>
+                    </div>
+                  </form>
+                {/if}
+              </div>
+            {:else}
+              <div class="rounded-xl border border-tezcat-border bg-tezcat-bg/60 p-3 text-xs text-tezcat-textMuted">
+                El plazo del 20% ({data.plazoReasignacion?.diasPermitidos ?? 1} día{(data.plazoReasignacion?.diasPermitidos ?? 1) === 1 ? '' : 's'}) para solicitar cambio de asignación en esta tarea ha finalizado.
+              </div>
+            {/if}
+          </Panel>
+        {/if}
+
         <!-- TW-08: Archivos y Evidencias -->
         <Panel
           titulo="Archivos De La Tarea"
-          descripcion="Materiales guía del encargado y entregables de evidencia del Miembro."
+          descripcion="Adjunta los archivos para esta actividad."
         >
           {#if data.archivos.length === 0}
             <div class="mb-4 flex items-start gap-2.5 rounded-xl border border-dashed border-tezcat-border bg-tezcat-bg/50 p-3.5 text-xs text-tezcat-textMuted">
@@ -687,26 +990,40 @@
               {#each data.archivos as a (a.id)}
                 <li class="rounded-xl border border-tezcat-border bg-tezcat-bg p-3">
                   <div class="flex items-start justify-between gap-2">
-                    <a
-                      href={a.urlDescarga ?? '#'}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      class="group flex min-w-0 items-start gap-2"
-                    >
-                      <span class="material-symbols-outlined mt-0.5 text-base text-tezcat-cyan">
-                        {a.mimeType === 'text/uri-list' ? 'link' : 'description'}
-                      </span>
-                      <div class="min-w-0">
-                        <p class="truncate font-semibold text-tezcat-textPrimary group-hover:text-tezcat-cyan group-hover:underline">
-                          {a.nombre}
-                        </p>
-                        <p class="mt-0.5 font-mono text-[10px] text-tezcat-textMuted">
-                          {formatearBytes(a.tamanoBytes)} · {a.subidoPorNombre ?? 'Usuario'}
-                        </p>
+                    {#if reasignadaDelUsuario}
+                      <div class="flex min-w-0 items-start gap-2 opacity-60">
+                        <span class="material-symbols-outlined mt-0.5 text-base text-tezcat-textMuted">
+                          {a.mimeType === 'text/uri-list' ? 'link' : 'description'}
+                        </span>
+                        <div class="min-w-0">
+                          <p class="truncate font-semibold text-tezcat-textSecondary">{a.nombre}</p>
+                          <p class="mt-0.5 font-mono text-[10px] text-tezcat-textMuted">
+                            {formatearBytes(a.tamanoBytes)} · {a.subidoPorNombre ?? 'Usuario'}
+                          </p>
+                        </div>
                       </div>
-                    </a>
+                    {:else}
+                      <a
+                        href={a.urlDescarga ?? '#'}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="group flex min-w-0 items-start gap-2"
+                      >
+                        <span class="material-symbols-outlined mt-0.5 text-base text-tezcat-cyan">
+                          {a.mimeType === 'text/uri-list' ? 'link' : 'description'}
+                        </span>
+                        <div class="min-w-0">
+                          <p class="truncate font-semibold text-tezcat-textPrimary group-hover:text-tezcat-cyan group-hover:underline">
+                            {a.nombre}
+                          </p>
+                          <p class="mt-0.5 font-mono text-[10px] text-tezcat-textMuted">
+                            {formatearBytes(a.tamanoBytes)} · {a.subidoPorNombre ?? 'Usuario'}
+                          </p>
+                        </div>
+                      </a>
+                    {/if}
 
-                    {#if data.user.rol === 'ENCARGADO' || data.user.id === a.subidoPorId || data.user.rol === 'ADMIN'}
+                    {#if !reasignadaDelUsuario && (data.user.rol === 'ENCARGADO' || data.user.id === a.subidoPorId || data.user.rol === 'ADMIN')}
                       <form method="POST" action="?/eliminarArchivo" use:enhance>
                         <input type="hidden" name="archivoId" value={a.id} />
                         <button
@@ -735,7 +1052,7 @@
             </ul>
           {/if}
 
-          {#if data.tarea.estado !== 'TERMINADA'}
+          {#if data.tarea.estado !== 'TERMINADA' && !reasignadaDelUsuario}
             <div class="space-y-3 border-t border-tezcat-border pt-3">
               <div class="grid grid-cols-2 gap-1 rounded-lg bg-tezcat-bg p-1 font-mono text-[10px]">
                 <button

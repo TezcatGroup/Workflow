@@ -8,7 +8,9 @@ import {
   registrarArchivo,
   eliminarArchivoBD,
   agregarComentarioBD,
-  eliminarTarea
+  eliminarTarea,
+  solicitarReasignacionBD,
+  resolverReasignacionBD
 } from '$lib/server/tareas';
 
 export const load: PageServerLoad = async ({ locals, params }) => {
@@ -38,7 +40,6 @@ export const actions: Actions = {
       throw e;
     }
   },
-  
 
   toggleCriterio: async ({ locals, params, request }) => {
     const user = locals.user;
@@ -119,6 +120,51 @@ export const actions: Actions = {
     }
   },
 
+  // TW-11: El miembro solicita que la tarea se pase a otra persona (dentro del 20% de días)
+  solicitarReasignacion: async ({ locals, params, request }) => {
+    const user = locals.user;
+    if (!user) redirect(303, '/login');
+
+    const form = await request.formData();
+    const motivo = String(form.get('motivo') ?? '');
+
+    try {
+      await solicitarReasignacionBD(user, params.id, motivo);
+      return { ok: 'Tu solicitud de cambio de asignación ha sido enviada al encargado.' };
+    } catch (e) {
+      if (isHttpError(e)) return fail(e.status, { error: e.body.message });
+      throw e;
+    }
+  },
+
+  // TW-11: El encargado aprueba (reasignando a otro miembro) o declina (enviando el porqué al chat)
+  resolverReasignacion: async ({ locals, params, request }) => {
+    const user = locals.user;
+    if (!user) redirect(303, '/login');
+
+    const form = await request.formData();
+    const decision = String(form.get('decision') ?? '') === 'APROBAR' ? 'APROBAR' : 'DECLINAR';
+    const nuevoResponsableId = String(form.get('nuevoResponsableId') ?? '').trim();
+    const motivoRechazo = String(form.get('motivoRechazo') ?? '').trim();
+
+    try {
+      const resultado = await resolverReasignacionBD(
+        user,
+        params.id,
+        decision,
+        nuevoResponsableId,
+        motivoRechazo
+      );
+      if (resultado.estado === 'ACEPTADA') {
+        return { ok: `Cambio aprobado. La tarea fue reasignada a ${resultado.nuevoResponsableNombre}.` };
+      }
+      return { ok: 'Solicitud de cambio denegada. Se envió el motivo al chat de la tarea.' };
+    } catch (e) {
+      if (isHttpError(e)) return fail(e.status, { error: e.body.message });
+      throw e;
+    }
+  },
+
   eliminarTarea: async ({ locals, params }) => {
     const user = locals.user;
     if (!user) redirect(303, '/login');
@@ -130,8 +176,6 @@ export const actions: Actions = {
       throw e;
     }
 
-    // Redirigir a la bandeja principal de tareas tras la eliminación
     redirect(303, '/tareas');
   }
-  
 };
