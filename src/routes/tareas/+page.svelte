@@ -5,7 +5,6 @@
 
   let { data }: { data: PageData } = $props();
 
-
   const textoEstado: Record<string, string> = {
     ASIGNADA: 'Asignada', EN_PROCESO: 'En proceso', EN_REVISION: 'En revisión', TERMINADA: 'Terminada'
   };
@@ -34,12 +33,12 @@
   const horaCorta = (d: Date | string) =>
     new Date(d).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' });
 
-  // Días restantes para la fecha límite (negativo = vencida).
   function diasRestantes(d: Date): number {
     return Math.ceil((new Date(d).getTime() - Date.now()) / 86_400_000);
   }
 
   function textoVencimiento(t: (typeof data.tareas)[number]): { texto: string; urgente: boolean } {
+    if (t.reasignadaDelUsuario) return { texto: 'Reasignada a otro miembro', urgente: false };
     if (t.estado === 'TERMINADA') return { texto: 'Completada', urgente: false };
     const dias = diasRestantes(t.fechaLimite);
     if (dias < 0) return { texto: `Vencida hace ${Math.abs(dias)} día${Math.abs(dias) === 1 ? '' : 's'}`, urgente: true };
@@ -48,12 +47,87 @@
     return { texto: `Vence en ${dias} días`, urgente: false };
   }
 
-  // Filtros reactivos (Sprint 5 - UX para Encargado y Miembro)
+  // =========================================================================
+  // LÓGICA TW-10 y TW-11: Formateadores de Eventos Centrales para el Drawer
+  // =========================================================================
+  type EventoDrawer = Extract<(typeof data.tareas)[number]['timeline'][number], { tipoItem: 'EVENTO' }>;
+
+  function textoEvento(e: EventoDrawer): string {
+    const detalle = e.detalle as {
+      de?: string;
+      a?: string;
+      nombre?: string;
+      esEnlace?: boolean;
+      nuevoResponsableNombre?: string;
+    } | null;
+
+    if (e.tipo === 'TAREA_CREADA') return 'Tarea creada';
+    if (e.tipo === 'CAMBIO_ESTADO' && detalle?.de && detalle?.a) {
+      if (detalle.de === 'EN_REVISION' && detalle.a === 'EN_PROCESO') {
+        return 'Se devolvió la tarea a En proceso';
+      }
+      if (detalle.a === 'EN_PROCESO') return 'Inició la tarea (En proceso)';
+      if (detalle.a === 'EN_REVISION') return 'Envió la tarea a revisión';
+      if (detalle.a === 'TERMINADA') return 'Tarea aprobada y terminada';
+      return `Cambió de ${textoEstado[detalle.de] ?? detalle.de} a ${textoEstado[detalle.a] ?? detalle.a}`;
+    }
+    if (e.tipo === 'ARCHIVO_SUBIDO') {
+      return detalle?.esEnlace
+        ? `Adjuntó enlace: ${detalle.nombre ?? 'recurso'}`
+        : `Adjuntó archivo: ${detalle?.nombre ?? 'documento'}`;
+    }
+    if (e.tipo === 'ARCHIVO_ELIMINADO') {
+      return `Eliminó adjunto: ${detalle?.nombre ?? 'archivo'}`;
+    }
+    if (e.tipo === 'SOLICITUD_REASIGNACION') return 'Solicitó cambio de asignación';
+    if (e.tipo === 'REASIGNACION_APROBADA') {
+      return `Reasignada a ${detalle?.nuevoResponsableNombre ?? 'otro miembro'}`;
+    }
+    if (e.tipo === 'REASIGNACION_RECHAZADA') return 'Solicitud de reasignación denegada';
+    return e.tipo;
+  }
+
+  function iconoEvento(e: EventoDrawer): string {
+    const detalle = e.detalle as { de?: string; a?: string; esEnlace?: boolean } | null;
+    if (e.tipo === 'TAREA_CREADA') return 'add_task';
+    if (e.tipo === 'CAMBIO_ESTADO') {
+      if (detalle?.de === 'EN_REVISION' && detalle?.a === 'EN_PROCESO') return 'replay';
+      if (detalle?.a === 'EN_PROCESO') return 'play_arrow';
+      if (detalle?.a === 'EN_REVISION') return 'rate_review';
+      if (detalle?.a === 'TERMINADA') return 'task_alt';
+      return 'sync_alt';
+    }
+    if (e.tipo === 'ARCHIVO_SUBIDO') return detalle?.esEnlace ? 'link' : 'attach_file';
+    if (e.tipo === 'ARCHIVO_ELIMINADO') return 'delete';
+    if (e.tipo === 'SOLICITUD_REASIGNACION') return 'swap_horiz';
+    if (e.tipo === 'REASIGNACION_APROBADA') return 'how_to_reg';
+    if (e.tipo === 'REASIGNACION_RECHAZADA') return 'block';
+    return 'info';
+  }
+
+  function claseEvento(e: EventoDrawer): string {
+    const detalle = e.detalle as { de?: string; a?: string } | null;
+    if (e.tipo === 'TAREA_CREADA') return 'border-tezcat-cyan/30 bg-tezcat-cyan/10 text-tezcat-cyan';
+    if (e.tipo === 'CAMBIO_ESTADO') {
+      if (detalle?.de === 'EN_REVISION' && detalle?.a === 'EN_PROCESO') {
+        return 'border-amber-400/35 bg-amber-400/10 text-amber-300';
+      }
+      if (detalle?.a === 'EN_REVISION') return 'border-violet-400/35 bg-violet-400/10 text-violet-300';
+      if (detalle?.a === 'TERMINADA') return 'border-emerald-400/35 bg-emerald-400/10 text-emerald-300';
+    }
+    if (e.tipo === 'ARCHIVO_ELIMINADO' || e.tipo === 'REASIGNACION_RECHAZADA') {
+      return 'border-red-400/30 bg-red-400/10 text-red-300';
+    }
+    if (e.tipo === 'SOLICITUD_REASIGNACION') return 'border-amber-400/35 bg-amber-400/10 text-amber-300';
+    if (e.tipo === 'REASIGNACION_APROBADA') return 'border-emerald-400/35 bg-emerald-400/10 text-emerald-300';
+    return 'border-tezcat-border/80 bg-tezcat-surfaceAlt/60 text-tezcat-textSecondary';
+  }
+
+  // Filtros reactivos
   let filtroMiembro = $state<string>('TODOS');
   let filtroEstado = $state<string>('TODOS');
   let busqueda = $state<string>('');
 
-  // Lista única de miembros extraída dinámicamente de las tareas cargadas
   const miembrosUnicos = $derived(
     Array.from(new Set(data.tareas.map((t) => t.responsableNombre).filter((n): n is string => Boolean(n)))).sort()
   );
@@ -61,7 +135,9 @@
   const tareasFiltradas = $derived(
     data.tareas.filter((t) => {
       const coincideMiembro = filtroMiembro === 'TODOS' || t.responsableNombre === filtroMiembro;
-      const coincideEstado = filtroEstado === 'TODOS' || t.estado === filtroEstado;
+      const coincideEstado =
+        filtroEstado === 'TODOS' ||
+        (filtroEstado === 'REASIGNADA' ? t.reasignadaDelUsuario : t.estado === filtroEstado);
       const termino = busqueda.trim().toLowerCase();
       const coincideBusqueda =
         !termino ||
@@ -72,20 +148,29 @@
     })
   );
 
-  // Estado para el Chat Flotante Contextual (TW-09)
+  // Estado para el Chat Flotante Contextual con Timeline (TW-09 y TW-10)
   let tareaChatActivaId = $state<string | null>(null);
   let textoMensajeRapido = $state<string>('');
   let enviandoMensaje = $state<boolean>(false);
+  let contenedorDrawerRef = $state<HTMLDivElement | null>(null);
 
   const tareaChatActiva = $derived(data.tareas.find((t) => t.id === tareaChatActivaId) ?? null);
 
-  // Métricas derivadas del propio listado.
+  $effect(() => {
+    const _total = tareaChatActiva?.timeline?.length ?? 0;
+    if (contenedorDrawerRef && _total > 0) {
+      contenedorDrawerRef.scrollTop = contenedorDrawerRef.scrollHeight;
+    }
+  });
+
   const porEstado = $derived({
-    asignadas: data.tareas.filter((t) => t.estado === 'ASIGNADA').length,
-    enProceso: data.tareas.filter((t) => t.estado === 'EN_PROCESO').length,
-    enRevision: data.tareas.filter((t) => t.estado === 'EN_REVISION').length,
-    terminadas: data.tareas.filter((t) => t.estado === 'TERMINADA').length,
-    vencidas: data.tareas.filter((t) => t.estado !== 'TERMINADA' && diasRestantes(t.fechaLimite) < 0).length
+    asignadas: data.tareas.filter((t) => !t.reasignadaDelUsuario && t.estado === 'ASIGNADA').length,
+    enProceso: data.tareas.filter((t) => !t.reasignadaDelUsuario && t.estado === 'EN_PROCESO').length,
+    enRevision: data.tareas.filter((t) => !t.reasignadaDelUsuario && t.estado === 'EN_REVISION').length,
+    terminadas: data.tareas.filter((t) => !t.reasignadaDelUsuario && t.estado === 'TERMINADA').length,
+    vencidas: data.tareas.filter(
+      (t) => !t.reasignadaDelUsuario && t.estado !== 'TERMINADA' && diasRestantes(t.fechaLimite) < 0
+    ).length
   });
 </script>
 
@@ -99,14 +184,14 @@
     <div class="mb-6 flex flex-wrap items-end justify-between gap-4">
       <div>
         <p class="font-mono text-[11px] font-semibold tracking-widest text-tezcat-cyan uppercase">
-          Sprint 5 · Tareas, seguimiento y conversación
+          Sprint 6 · Trazabilidad, delegación y conversación
         </p>
         <h1 class="mt-1 text-2xl font-bold tracking-tight text-white sm:text-3xl">Tareas</h1>
         <p class="mt-1.5 text-xs text-tezcat-textSecondary">
           {#if data.user.rol === 'MIEMBRO'}
             Tareas asignadas a ti, ordenadas por fecha límite.
           {:else if data.user.rol === 'ENCARGADO'}
-            Tareas de tu departamento. Filtra por miembro asignado o abre la conversación de cada tarea.
+            Tareas de tu departamento. Filtra por miembro asignado o abre la línea de tiempo y conversación de cada tarea.
           {:else}
             Todas las tareas del sistema (solo lectura).
           {/if}
@@ -157,7 +242,6 @@
     <!-- Barra de filtros por Miembro, Estado y Búsqueda -->
     {#if data.tareas.length > 0}
       <div class="mb-5 grid gap-3 rounded-2xl border border-tezcat-border bg-tezcat-card/80 p-4 sm:grid-cols-3">
-        <!-- Búsqueda -->
         <div class="relative">
           <span class="material-symbols-outlined pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-base text-tezcat-textMuted">
             search
@@ -170,7 +254,6 @@
           />
         </div>
 
-        <!-- Filtro por Miembro -->
         <div class="relative">
           <span class="material-symbols-outlined pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-base text-tezcat-textMuted">
             person_search
@@ -187,7 +270,6 @@
           </select>
         </div>
 
-        <!-- Filtro por Estado -->
         <div class="relative">
           <span class="material-symbols-outlined pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-base text-tezcat-textMuted">
             filter_list
@@ -202,6 +284,9 @@
             <option value="EN_PROCESO">En proceso</option>
             <option value="EN_REVISION">En revisión</option>
             <option value="TERMINADA">Terminadas</option>
+            {#if data.user.rol === 'MIEMBRO'}
+              <option value="REASIGNADA">Reasignadas</option>
+            {/if}
           </select>
         </div>
       </div>
@@ -249,7 +334,7 @@
       <ul class="space-y-3">
         {#each tareasFiltradas as t (t.id)}
           {@const vencimiento = textoVencimiento(t)}
-          <li class="group flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-tezcat-border/80 bg-tezcat-card/90 p-5 shadow-md backdrop-blur-md transition-all hover:border-tezcat-cyan/50 hover:shadow-glow-cyan/20">
+          <li class="group flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-tezcat-border/80 bg-tezcat-card/90 p-5 shadow-md backdrop-blur-md transition-all hover:border-tezcat-cyan/50 hover:shadow-glow-cyan/20 {t.reasignadaDelUsuario ? 'opacity-75' : ''}">
             <a href="/tareas/{t.id}" class="min-w-0 flex-1">
               <div class="flex flex-wrap items-center gap-2">
                 <span class="font-mono text-[10px] font-semibold tracking-wider text-tezcat-cyan uppercase">
@@ -258,7 +343,19 @@
                 <span class="rounded-md border px-1.5 py-0.5 font-mono text-[10px] tracking-wider uppercase {clasePrioridad[t.prioridad ?? ''] ?? 'border-tezcat-border bg-tezcat-surfaceAlt text-tezcat-textSecondary'}">
                   {t.prioridad ?? '—'}
                 </span>
-                {#if t.estado !== 'TERMINADA' && vencimiento.urgente}
+                {#if t.tieneSolicitudReasignacion && data.user.rol === 'ENCARGADO'}
+                  <span class="inline-flex items-center gap-1 rounded-md border border-amber-400/50 bg-amber-400/15 px-2 py-0.5 font-mono text-[10px] font-bold tracking-wider text-amber-300 uppercase">
+                    <span class="material-symbols-outlined text-xs">swap_horiz</span>
+                    Solicitud de reasignación
+                  </span>
+                {/if}
+                {#if t.devueltaEnRevision && !t.reasignadaDelUsuario}
+                  <span class="inline-flex items-center gap-1 rounded-md border border-amber-400/50 bg-amber-400/15 px-2 py-0.5 font-mono text-[10px] font-bold tracking-wider text-amber-300 uppercase">
+                    <span class="material-symbols-outlined text-xs">replay</span>
+                    Entrega devuelta
+                  </span>
+                {/if}
+                {#if !t.reasignadaDelUsuario && t.estado !== 'TERMINADA' && vencimiento.urgente}
                   <span class="inline-flex items-center gap-1 font-mono text-[10px] font-semibold tracking-wider text-red-300 uppercase">
                     <span class="material-symbols-outlined text-xs">warning</span>
                     {vencimiento.texto}
@@ -279,24 +376,34 @@
             </a>
 
             <div class="flex items-center gap-2.5">
-              <!-- Botón para abrir Chat Contextual Rápido (TW-09) -->
+              <!-- Botón para abrir Chat y Timeline Contextual Rápido (TW-09 y TW-10) -->
               <button
                 type="button"
                 onclick={() => (tareaChatActivaId = t.id)}
-                title="Abrir conversación de la tarea"
+                title="Abrir conversación y actividad de la tarea"
                 class="inline-flex items-center gap-1.5 rounded-lg border border-tezcat-border bg-tezcat-surfaceAlt px-2.5 py-1.5 font-mono text-[11px] font-semibold text-tezcat-textSecondary transition-colors hover:border-tezcat-cyan/50 hover:text-tezcat-cyan"
               >
                 <span class="material-symbols-outlined text-sm">forum</span>
                 <span>{t.totalComentarios ?? 0}</span>
               </button>
 
-              <a
-                href="/tareas/{t.id}"
-                class="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 font-mono text-[11px] font-semibold tracking-wider uppercase {claseEstado[t.estado] ?? ''}"
-              >
-                <span class="material-symbols-outlined text-sm">{iconoEstado[t.estado] ?? 'label'}</span>
-                {textoEstado[t.estado] ?? t.estado}
-              </a>
+              {#if t.reasignadaDelUsuario}
+                <a
+                  href="/tareas/{t.id}"
+                  class="inline-flex items-center gap-1.5 rounded-lg border border-amber-400/50 bg-amber-400/15 px-2.5 py-1 font-mono text-[11px] font-bold tracking-wider text-amber-300 uppercase"
+                >
+                  <span class="material-symbols-outlined text-sm">swap_horiz</span>
+                  Reasignada
+                </a>
+              {:else}
+                <a
+                  href="/tareas/{t.id}"
+                  class="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 font-mono text-[11px] font-semibold tracking-wider uppercase {claseEstado[t.estado] ?? ''}"
+                >
+                  <span class="material-symbols-outlined text-sm">{iconoEstado[t.estado] ?? 'label'}</span>
+                  {textoEstado[t.estado] ?? t.estado}
+                </a>
+              {/if}
             </div>
           </li>
         {/each}
@@ -304,7 +411,7 @@
     {/if}
   </main>
 
-  <!-- Ventana Flotante / Drawer de Conversación por Tarea (TW-09) -->
+  <!-- Ventana Flotante / Drawer de Conversación y Timeline por Tarea (TW-09, TW-10 y TW-11) -->
   {#if tareaChatActiva}
     <div class="fixed inset-0 z-50 flex justify-end bg-black/60 backdrop-blur-xs">
       <div class="flex h-full w-full max-w-md flex-col border-l border-tezcat-border bg-tezcat-card shadow-2xl">
@@ -313,11 +420,17 @@
           <div class="min-w-0">
             <div class="flex items-center gap-2">
               <span class="font-mono text-[10px] font-bold tracking-wider text-tezcat-cyan uppercase">
-                CORE-{tareaChatActiva.numero ?? '?'} · TW-09
+                CORE-{tareaChatActiva.numero ?? '?'} · TW-09 · TW-10
               </span>
-              <span class="rounded border px-1.5 py-0.5 font-mono text-[9px] uppercase {claseEstado[tareaChatActiva.estado] ?? ''}">
-                {textoEstado[tareaChatActiva.estado] ?? tareaChatActiva.estado}
-              </span>
+              {#if tareaChatActiva.reasignadaDelUsuario}
+                <span class="rounded border border-amber-400/50 bg-amber-400/15 px-1.5 py-0.5 font-mono text-[9px] font-bold text-amber-300 uppercase">
+                  Reasignada
+                </span>
+              {:else}
+                <span class="rounded border px-1.5 py-0.5 font-mono text-[9px] uppercase {claseEstado[tareaChatActiva.estado] ?? ''}">
+                  {textoEstado[tareaChatActiva.estado] ?? tareaChatActiva.estado}
+                </span>
+              {/if}
             </div>
             <h2 class="mt-1 truncate text-sm font-bold text-white">{tareaChatActiva.titulo}</h2>
             <p class="mt-0.5 text-[11px] text-tezcat-textSecondary">
@@ -334,72 +447,97 @@
           </button>
         </div>
 
-        <!-- Lista de mensajes -->
-        <div class="flex-1 space-y-3 overflow-y-auto p-4">
-          {#if (tareaChatActiva.comentariosRecientes ?? []).length === 0}
+        <!-- Lista de mensajes y eventos del Timeline (TW-10) -->
+        <div bind:this={contenedorDrawerRef} class="flex-1 space-y-3 overflow-y-auto p-4">
+          {#if (tareaChatActiva.timeline ?? []).length === 0}
             <div class="flex h-full flex-col items-center justify-center text-center text-tezcat-textMuted">
               <span class="material-symbols-outlined text-3xl">chat_bubble_outline</span>
-              <p class="mt-2 text-xs font-semibold">Sin mensajes en esta tarea</p>
+              <p class="mt-2 text-xs font-semibold">Sin actividad ni mensajes en esta tarea</p>
               <p class="mt-1 max-w-xs text-[11px]">
                 Inicia la conversación con {tareaChatActiva.responsableNombre ?? 'el equipo'} para aclarar dudas o avances.
               </p>
             </div>
           {:else}
-            {#each tareaChatActiva.comentariosRecientes as msg (msg.id)}
-              {@const esMio = msg.autorId === data.user.id}
-              <div class="flex flex-col {esMio ? 'items-end' : 'items-start'}">
-                <div class="mb-1 flex items-center gap-1.5 font-mono text-[10px] text-tezcat-textMuted">
-                  <span class="font-semibold text-tezcat-textSecondary">{msg.autorNombre}</span>
-                  <span class="rounded bg-tezcat-surfaceAlt px-1 py-0.2 text-[9px] text-tezcat-cyan uppercase">{msg.autorRol}</span>
-                  <span>· {horaCorta(msg.creadoEn)}</span>
+            {#each tareaChatActiva.timeline as item (`${item.tipoItem}-${item.id}`)}
+              {#if item.tipoItem === 'EVENTO'}
+                <!-- TW-10: Píldora central minimalista de evento dentro del Drawer -->
+                <div class="my-1.5 flex items-center justify-center gap-2">
+                  <span class="h-px flex-1 bg-tezcat-border/50"></span>
+                  <div
+                    class="inline-flex max-w-[92%] flex-wrap items-center justify-center gap-1 rounded-full border px-2.5 py-0.5 text-center font-mono text-[10px] leading-tight
+                      {claseEvento(item)}"
+                  >
+                    <span class="material-symbols-outlined text-xs">{iconoEvento(item)}</span>
+                    <span class="font-semibold">{textoEvento(item)}</span>
+                    <span class="opacity-75">
+                      · {horaCorta(item.creadoEn)}{item.actorNombre ? ` · ${item.actorNombre}` : ''}
+                    </span>
+                  </div>
+                  <span class="h-px flex-1 bg-tezcat-border/50"></span>
                 </div>
-                <div
-                  class="max-w-[85%] rounded-2xl border px-3.5 py-2.5 text-xs leading-relaxed
-                    {esMio
-                      ? 'rounded-tr-xs border-tezcat-cyan/40 bg-tezcat-cyan/10 text-tezcat-textPrimary'
-                      : 'rounded-tl-xs border-tezcat-border bg-tezcat-surfaceAlt text-tezcat-textPrimary'}"
-                >
-                  <p class="whitespace-pre-line">{msg.contenido}</p>
+              {:else}
+                <!-- TW-09: Burbuja de mensaje normal -->
+                {@const esMio = item.autorId === data.user.id}
+                <div class="flex flex-col {esMio ? 'items-end' : 'items-start'}">
+                  <div class="mb-1 flex items-center gap-1.5 font-mono text-[10px] text-tezcat-textMuted">
+                    <span class="font-semibold text-tezcat-textSecondary">{item.autorNombre}</span>
+                    <span class="rounded bg-tezcat-surfaceAlt px-1 py-0.2 text-[9px] text-tezcat-cyan uppercase">{item.autorRol}</span>
+                    <span>· {horaCorta(item.creadoEn)}</span>
+                  </div>
+                  <div
+                    class="max-w-[85%] rounded-2xl border px-3.5 py-2.5 text-xs leading-relaxed
+                      {esMio
+                        ? 'rounded-tr-xs border-tezcat-cyan/40 bg-tezcat-cyan/10 text-tezcat-textPrimary'
+                        : 'rounded-tl-xs border-tezcat-border bg-tezcat-surfaceAlt text-tezcat-textPrimary'}"
+                  >
+                    <p class="whitespace-pre-line">{item.contenido}</p>
+                  </div>
                 </div>
-              </div>
+              {/if}
             {/each}
           {/if}
         </div>
 
-        <!-- Formulario para enviar mensaje rápido -->
+        <!-- Formulario para enviar mensaje rápido (o aviso de reasignación si ya no es suya) -->
         <div class="border-t border-tezcat-border bg-tezcat-bg/90 p-3">
-          <form
-            method="POST"
-            action="?/enviarMensajeRapido"
-            class="flex items-end gap-2"
-            use:enhance={() => {
-              enviandoMensaje = true;
-              return async ({ update }) => {
-                enviandoMensaje = false;
-                textoMensajeRapido = '';
-                await update();
-              };
-            }}
-          >
-            <input type="hidden" name="tareaId" value={tareaChatActiva.id} />
-            <textarea
-              name="contenido"
-              rows="2"
-              required
-              maxlength="2000"
-              bind:value={textoMensajeRapido}
-              placeholder="Escribe un mensaje sobre esta tarea…"
-              class="flex-1 resize-none rounded-xl border border-tezcat-border bg-tezcat-card px-3 py-2 text-xs text-tezcat-textPrimary placeholder-tezcat-textMuted focus:border-tezcat-cyan focus:outline-none"
-            ></textarea>
-            <button
-              type="submit"
-              disabled={enviandoMensaje || !textoMensajeRapido.trim()}
-              class="inline-flex size-9 shrink-0 items-center justify-center rounded-xl bg-tezcat-cyan text-slate-950 transition-opacity hover:bg-tezcat-cyanHover disabled:opacity-40"
-              title="Enviar mensaje"
+          {#if tareaChatActiva.reasignadaDelUsuario}
+            <div class="rounded-xl border border-amber-400/40 bg-amber-400/10 p-2.5 text-[11px] text-amber-200">
+              Se ha validado la reasignación de la actividad que se le había imputado. El chat está deshabilitado para esta tarea.
+            </div>
+          {:else}
+            <form
+              method="POST"
+              action="?/enviarMensajeRapido"
+              class="flex items-end gap-2"
+              use:enhance={() => {
+                enviandoMensaje = true;
+                return async ({ update }) => {
+                  enviandoMensaje = false;
+                  textoMensajeRapido = '';
+                  await update();
+                };
+              }}
             >
-              <span class="material-symbols-outlined text-base">send</span>
-            </button>
-          </form>
+              <input type="hidden" name="tareaId" value={tareaChatActiva.id} />
+              <textarea
+                name="contenido"
+                rows="2"
+                required
+                maxlength="2000"
+                bind:value={textoMensajeRapido}
+                placeholder="Escribe un mensaje sobre esta tarea…"
+                class="flex-1 resize-none rounded-xl border border-tezcat-border bg-tezcat-card px-3 py-2 text-xs text-tezcat-textPrimary placeholder-tezcat-textMuted focus:border-tezcat-cyan focus:outline-none"
+              ></textarea>
+              <button
+                type="submit"
+                disabled={enviandoMensaje || !textoMensajeRapido.trim()}
+                class="inline-flex size-9 shrink-0 items-center justify-center rounded-xl bg-tezcat-cyan text-slate-950 transition-opacity hover:bg-tezcat-cyanHover disabled:opacity-40"
+                title="Enviar mensaje"
+              >
+                <span class="material-symbols-outlined text-base">send</span>
+              </button>
+            </form>
+          {/if}
           <div class="mt-2 flex justify-between text-[11px]">
             <a
               href="/tareas/{tareaChatActiva.id}#conversacion"
