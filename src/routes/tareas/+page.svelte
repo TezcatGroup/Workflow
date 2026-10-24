@@ -349,6 +349,12 @@
                     Solicitud de reasignación
                   </span>
                 {/if}
+                {#if t.devueltaEnRevision && !t.reasignadaDelUsuario}
+                  <span class="inline-flex items-center gap-1 rounded-md border border-amber-400/50 bg-amber-400/15 px-2 py-0.5 font-mono text-[10px] font-bold tracking-wider text-amber-300 uppercase">
+                    <span class="material-symbols-outlined text-xs">replay</span>
+                    Entrega devuelta
+                  </span>
+                {/if}
                 {#if !t.reasignadaDelUsuario && t.estado !== 'TERMINADA' && vencimiento.urgente}
                   <span class="inline-flex items-center gap-1 font-mono text-[10px] font-semibold tracking-wider text-red-300 uppercase">
                     <span class="material-symbols-outlined text-xs">warning</span>

@@ -175,11 +175,12 @@
   );
 
   // =========================================================================
-  // LÓGICA TW-07 y TW-11: Progreso del Checklist y Permisos de Reasignación
+  // LÓGICA TW-07, TW-11 y TW-12: Progreso del Checklist, Permisos y Devolución
   // =========================================================================
   const totalCriterios = $derived(data.criterios.length);
   const criteriosCompletados = $derived(data.criterios.filter((c) => c.completado).length);
   const criteriosVerificados = $derived(data.criterios.filter((c) => c.verificadoEncargado).length);
+  const criteriosSinVerificar = $derived(data.criterios.filter((c) => !c.verificadoEncargado));
 
   const porcentajeCompletado = $derived(
     totalCriterios === 0 ? 100 : Math.round((criteriosCompletados / totalCriterios) * 100)
@@ -223,6 +224,12 @@
     }
     return { bloqueado: false, motivo: '' };
   }
+
+  // =========================================================================
+  // LÓGICA TW-12: Estado para Devolver Entrega con Observaciones
+  // =========================================================================
+  let mostrarFormularioDevolucion = $state(false);
+  let observacionesDevolucion = $state('');
 
   // =========================================================================
   // LÓGICA TW-11: Estados del Formulario de Solicitud y Resolución de Cambio
@@ -335,6 +342,12 @@
             <span class="material-symbols-outlined text-sm">{iconoEstado[data.tarea.estado] ?? 'label'}</span>
             {textoEstado[data.tarea.estado] ?? data.tarea.estado}
           </span>
+          {#if data.entregaDevuelta}
+            <span class="inline-flex items-center gap-1 rounded-md border border-amber-400/50 bg-amber-400/15 px-2 py-0.5 font-mono text-[11px] font-bold tracking-wider text-amber-300 uppercase">
+              <span class="material-symbols-outlined text-sm">replay</span>
+              Entrega devuelta
+            </span>
+          {/if}
         {/if}
       </div>
 
@@ -544,7 +557,7 @@
         </Panel>
 
         <!-- =============================================================== -->
-        <!-- TW-07: Checklist de Criterios + Botones de Avance en el mismo recuadro -->
+        <!-- TW-07 y TW-12: Checklist de Criterios + Devolución y Avance      -->
         <!-- =============================================================== -->
         <Panel
           titulo="Checklist"
@@ -552,6 +565,46 @@
             ? 'Modo revisor: verifica manualmente cada criterio conforme compruebes su cumplimiento antes de aprobar.'
             : 'Marca cada condición conforme avances para habilitar el envío a revisión.'}
         >
+          <!-- TW-12: Tarjeta temporal de corrección cuando el encargado devolvió la entrega -->
+          {#if data.entregaDevuelta}
+            <div class="mb-4 rounded-xl border border-amber-400/50 bg-amber-400/10 p-4 text-xs text-amber-100">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <div class="flex items-center gap-2 font-bold text-amber-300">
+                  <span class="material-symbols-outlined text-base">assignment_return</span>
+                  <span>Entrega devuelta para corrección</span>
+                </div>
+                <span class="font-mono text-[10px] text-amber-200/80">
+                  {data.entregaDevuelta.revisorNombre} · {fecha(data.entregaDevuelta.creadaEn)}
+                </span>
+              </div>
+
+              <div class="mt-2.5 rounded-lg border border-amber-400/30 bg-tezcat-bg/80 p-3">
+                <p class="font-mono text-[10px] font-semibold tracking-wider text-amber-300 uppercase">
+                  Motivo de la devolución:
+                </p>
+                <p class="mt-1 leading-relaxed whitespace-pre-line text-tezcat-textPrimary">
+                  {data.entregaDevuelta.observaciones}
+                </p>
+              </div>
+
+              {#if data.entregaDevuelta.criteriosNoCumplidos.length > 0}
+                <div class="mt-2.5">
+                  <p class="font-mono text-[10px] font-semibold tracking-wider text-amber-300 uppercase">
+                    Criterios que faltaron por cumplir ({data.entregaDevuelta.criteriosNoCumplidos.length}):
+                  </p>
+                  <ul class="mt-1.5 list-inside list-disc space-y-1 text-amber-100/90">
+                    {#each data.entregaDevuelta.criteriosNoCumplidos as crit (crit.id)}
+                      <li>{crit.descripcion}</li>
+                    {/each}
+                  </ul>
+                  <p class="mt-2 text-[11px] text-amber-200/75">
+                    Estos puntos fueron desmarcados en tu checklist abajo. Corrígelos y vuelve a marcarlos para enviar nuevamente a revisión.
+                  </p>
+                </div>
+              {/if}
+            </div>
+          {/if}
+
           {#if data.criterios.length === 0}
             <p class="text-sm text-tezcat-textMuted">Esta tarea no tiene criterios registrados.</p>
           {:else}
@@ -576,16 +629,23 @@
 
             <ul class="space-y-2.5">
               {#each data.criterios as c (c.id)}
-                <li class="flex flex-col justify-between gap-3 rounded-xl border border-tezcat-border bg-tezcat-bg px-3.5 py-3 text-sm sm:flex-row sm:items-center">
+                <li
+                  class="flex flex-col justify-between gap-3 rounded-xl border bg-tezcat-bg px-3.5 py-3 text-sm sm:flex-row sm:items-center
+                    {data.entregaDevuelta && !c.verificadoEncargado && !c.completado
+                      ? 'border-amber-400/50'
+                      : 'border-tezcat-border'}"
+                >
                   <form method="POST" action="?/toggleCriterio" use:enhance class="flex min-w-0 flex-1 items-start gap-3">
                     <input type="hidden" name="criterioId" value={c.id} />
                     <input type="hidden" name="modo" value="RESPONSABLE" />
                     <button
                       type="submit"
-                      disabled={!puedeMarcarAvance}
-                      title={puedeMarcarAvance
-                        ? 'Haz clic para marcar o desmarcar este criterio'
-                        : 'El avance solo se modifica en estado Asignada o En proceso'}
+                      disabled={!puedeMarcarAvance || (c.verificadoEncargado && !esEncargadoORevisor)}
+                      title={c.verificadoEncargado && !esEncargadoORevisor
+                        ? 'Este criterio ya fue verificado y aprobado por el encargado'
+                        : puedeMarcarAvance
+                          ? 'Haz clic para marcar o desmarcar este criterio'
+                          : 'El avance solo se modifica en estado Asignada o En proceso'}
                       class="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-md border transition-colors disabled:cursor-default
                         {c.completado
                           ? 'border-emerald-400 bg-emerald-400/20 text-emerald-300'
@@ -619,6 +679,19 @@
                         {c.verificadoEncargado ? 'Verificado' : 'Verificar (Encargado)'}
                       </button>
                     </form>
+                  {:else if data.entregaDevuelta}
+                    <!-- TW-12: Indicador claro para el miembro de qué criterios ya están aprobados y cuáles debe corregir -->
+                    {#if c.verificadoEncargado}
+                      <span class="inline-flex shrink-0 items-center gap-1 rounded-lg border border-violet-400/40 bg-violet-400/15 px-2.5 py-1 font-mono text-[10px] font-semibold tracking-wider text-violet-300 uppercase">
+                        <span class="material-symbols-outlined text-sm">verified</span>
+                        Verificado
+                      </span>
+                    {:else}
+                      <span class="inline-flex shrink-0 items-center gap-1 rounded-lg border border-amber-400/40 bg-amber-400/15 px-2.5 py-1 font-mono text-[10px] font-semibold tracking-wider text-amber-300 uppercase">
+                        <span class="material-symbols-outlined text-sm">error</span>
+                        Por corregir
+                      </span>
+                    {/if}
                   {/if}
                 </li>
               {/each}
@@ -646,35 +719,126 @@
               <div class="flex flex-wrap gap-3">
                 {#each data.transicionesPermitidas as destino (destino)}
                   {@const candado = transicionBloqueada(destino)}
-                  <form
-                    method="POST"
-                    action="?/cambiarEstado"
-                    use:enhance={() => {
-                      enviando = true;
-                      return async ({ update }) => {
-                        enviando = false;
-                        await update();
-                      };
-                    }}
-                  >
-                    <input type="hidden" name="estado" value={destino} />
+                  {#if destino === 'EN_PROCESO' && data.tarea.estado === 'EN_REVISION'}
+                    <!-- TW-12: Al devolver una entrega, desplegar cuadro de explicación del rechazo -->
                     <button
-                      type="submit"
-                      disabled={enviando || candado.bloqueado}
-                      title={candado.bloqueado ? candado.motivo : ''}
-                      class="inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition-all active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-45
-                        {destino === 'TERMINADA' || destino === 'EN_REVISION'
-                          ? 'border-transparent bg-linear-to-r from-tezcat-cyan to-teal-400 text-slate-950 shadow-glow-cyan hover:from-tezcat-cyanHover hover:to-teal-300'
-                          : destino === 'EN_PROCESO'
-                            ? 'border-tezcat-cyan/50 bg-tezcat-cyan/10 text-tezcat-cyan hover:bg-tezcat-cyan/20'
-                            : 'border-tezcat-borderHighlight bg-tezcat-surfaceAlt text-tezcat-textPrimary hover:border-tezcat-cyan/50'}"
+                      type="button"
+                      disabled={enviando}
+                      onclick={() => (mostrarFormularioDevolucion = !mostrarFormularioDevolucion)}
+                      class="inline-flex items-center gap-2 rounded-xl border border-amber-400/50 bg-amber-400/10 px-4 py-2.5 text-sm font-semibold text-amber-300 transition-all hover:bg-amber-400/20 active:scale-[0.99] disabled:opacity-45"
                     >
-                      <span class="material-symbols-outlined text-lg">{iconoBoton[destino] ?? 'sync_alt'}</span>
+                      <span class="material-symbols-outlined text-lg">replay</span>
                       {textoBoton(destino)}
                     </button>
-                  </form>
+                  {:else}
+                    <form
+                      method="POST"
+                      action="?/cambiarEstado"
+                      use:enhance={() => {
+                        enviando = true;
+                        return async ({ update }) => {
+                          enviando = false;
+                          await update();
+                        };
+                      }}
+                    >
+                      <input type="hidden" name="estado" value={destino} />
+                      <button
+                        type="submit"
+                        disabled={enviando || candado.bloqueado}
+                        title={candado.bloqueado ? candado.motivo : ''}
+                        class="inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition-all active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-45
+                          {destino === 'TERMINADA' || destino === 'EN_REVISION'
+                            ? 'border-transparent bg-linear-to-r from-tezcat-cyan to-teal-400 text-slate-950 shadow-glow-cyan hover:from-tezcat-cyanHover hover:to-teal-300'
+                            : destino === 'EN_PROCESO'
+                              ? 'border-tezcat-cyan/50 bg-tezcat-cyan/10 text-tezcat-cyan hover:bg-tezcat-cyan/20'
+                              : 'border-tezcat-borderHighlight bg-tezcat-surfaceAlt text-tezcat-textPrimary hover:border-tezcat-cyan/50'}"
+                      >
+                        <span class="material-symbols-outlined text-lg">{iconoBoton[destino] ?? 'sync_alt'}</span>
+                        {textoBoton(destino)}
+                      </button>
+                    </form>
+                  {/if}
                 {/each}
               </div>
+
+              <!-- TW-12: Formulario desplegable para devolver la entrega con motivo y criterios faltantes -->
+              {#if mostrarFormularioDevolucion && data.tarea.estado === 'EN_REVISION'}
+                <form
+                  method="POST"
+                  action="?/cambiarEstado"
+                  class="mt-4 space-y-3 rounded-xl border border-amber-400/40 bg-tezcat-bg p-4"
+                  use:enhance={() => {
+                    enviando = true;
+                    return async ({ update }) => {
+                      enviando = false;
+                      mostrarFormularioDevolucion = false;
+                      observacionesDevolucion = '';
+                      await update();
+                    };
+                  }}
+                >
+                  <input type="hidden" name="estado" value="EN_PROCESO" />
+
+                  {#if totalCriterios > 0 && criteriosSinVerificar.length === 0}
+                    <div class="flex items-start gap-2 rounded-lg border border-amber-400/40 bg-amber-400/10 p-2.5 text-xs text-amber-200">
+                      <span class="material-symbols-outlined text-base text-amber-300">warning</span>
+                      <span>
+                        Tienes todos los criterios marcados como <strong>Verificado</strong>. Desmarca arriba el criterio que el miembro no haya alcanzado a cumplir para que se le indique en su checklist.
+                      </span>
+                    </div>
+                  {:else if criteriosSinVerificar.length > 0}
+                    <div class="rounded-lg border border-tezcat-border bg-tezcat-surfaceAlt/60 p-2.5 text-xs">
+                      <p class="font-mono text-[10px] font-semibold text-amber-300 uppercase">
+                        Se desmarcarán al miembro estos criterios no verificados ({criteriosSinVerificar.length}):
+                      </p>
+                      <ul class="mt-1 list-inside list-disc space-y-0.5 text-tezcat-textSecondary">
+                        {#each criteriosSinVerificar as crit (crit.id)}
+                          <li>{crit.descripcion}</li>
+                        {/each}
+                      </ul>
+                    </div>
+                  {/if}
+
+                  <div>
+                    <label for="observacionesDevolucion" class={etiqueta}>
+                      Explica al miembro por qué se le devuelve esta actividad *
+                    </label>
+                    <textarea
+                      id="observacionesDevolucion"
+                      name="observaciones"
+                      rows="3"
+                      required
+                      maxlength="2000"
+                      bind:value={observacionesDevolucion}
+                      placeholder="Detalla qué faltó cumplir o qué correcciones debe realizar en su entrega…"
+                      class="mt-1.5 w-full rounded-xl border border-tezcat-border bg-tezcat-card px-3.5 py-2 text-xs text-tezcat-textPrimary placeholder-tezcat-textMuted focus:border-amber-400 focus:outline-none"
+                    ></textarea>
+                  </div>
+
+                  <div class="flex justify-end gap-2">
+                    <button
+                      type="button"
+                      onclick={() => (mostrarFormularioDevolucion = false)}
+                      class="rounded-xl border border-tezcat-border px-3.5 py-2 text-xs font-semibold text-tezcat-textSecondary hover:text-white"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={
+                        enviando ||
+                        !observacionesDevolucion.trim() ||
+                        (totalCriterios > 0 && criteriosSinVerificar.length === 0)
+                      }
+                      class="inline-flex items-center gap-1.5 rounded-xl bg-amber-400 px-4 py-2 text-xs font-bold text-slate-950 transition-colors hover:bg-amber-300 disabled:opacity-45"
+                    >
+                      <span class="material-symbols-outlined text-base">assignment_return</span>
+                      Confirmar devolución
+                    </button>
+                  </div>
+                </form>
+              {/if}
             </div>
           {/if}
         </Panel>

@@ -8,6 +8,7 @@ import {
   tareaCriterios,
   tareaDelegaciones,
   tareaEventos,
+  tareaRevisiones,
   tareas,
   usuarios,
   tareaMensajes
@@ -30,6 +31,7 @@ export const DIFICULTAD_POR_DEFECTO = 'INTERMEDIA';
 export const MAX_ADJUNTO_BYTES = 10 * 1024 * 1024; // 10 MB centralizado (TW-08)
 const MAX_MENSAJE = 2000;
 const MAX_MOTIVO_DELEGACION = 1000;
+const MAX_OBSERVACIONES_REVISION = 2000;
 
 const MAX_TITULO = 200;
 const MAX_DESCRIPCION = 5000;
@@ -304,7 +306,7 @@ export async function crearTareaObligatoria(actor: Encargado, form: FormData) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Estados, permisos y transiciones (TW-05, TW-07 y TW-11)             */
+/* Estados, permisos y transiciones (TW-05, TW-07, TW-11 y TW-12)      */
 /* ------------------------------------------------------------------ */
 
 export type EstadoTarea = (typeof estadoTarea.enumValues)[number];
@@ -382,7 +384,12 @@ export async function cargarTarea(id: string) {
   return tarea;
 }
 
-export async function cambiarEstado(actor: Actor, tareaId: string, destinoTxt: string) {
+export async function cambiarEstado(
+  actor: Actor,
+  tareaId: string,
+  destinoTxt: string,
+  observacionesTxt = ''
+) {
   const destino = estadoTarea.enumValues.find((e) => e === destinoTxt);
   if (!destino) error(400, 'Estado inválido');
 
@@ -395,21 +402,40 @@ export async function cambiarEstado(actor: Actor, tareaId: string, destinoTxt: s
   if (!quien) error(400, `No se puede pasar de ${tarea.estado} a ${destino}`);
   if (!cumpleRol(actor, quien, tarea)) error(403, 'No tienes permiso para este cambio de estado');
 
-  // Candado de negocio TW-07: validar checklist antes de avanzar a EN_REVISION o TERMINADA
-  if (destino === 'EN_REVISION' || destino === 'TERMINADA') {
-    const criterios = await db
-      .select({
-        completado: tareaCriterios.completado,
-        verificadoEncargado: tareaCriterios.verificadoEncargado
-      })
-      .from(tareaCriterios)
-      .where(eq(tareaCriterios.tareaId, tarea.id));
+  const esDevolucionRevision = tarea.estado === 'EN_REVISION' && destino === 'EN_PROCESO';
+  const esAprobacionRevision = tarea.estado === 'EN_REVISION' && destino === 'TERMINADA';
+  const observaciones = observacionesTxt.trim();
 
-    if (destino === 'EN_REVISION' && criterios.some((c) => !c.completado)) {
-      error(400, 'Debes marcar todos los criterios de aceptación antes de enviar la tarea a revisión.');
+  // Consultar criterios cuando se envía a revisión, se aprueba o se devuelve (TW-07 y TW-12)
+  const criterios = await db
+    .select({
+      id: tareaCriterios.id,
+      completado: tareaCriterios.completado,
+      verificadoEncargado: tareaCriterios.verificadoEncargado
+    })
+    .from(tareaCriterios)
+    .where(eq(tareaCriterios.tareaId, tarea.id));
+
+  if (destino === 'EN_REVISION' && criterios.some((c) => !c.completado)) {
+    error(400, 'Debes marcar todos los criterios de aceptación antes de enviar la tarea a revisión.');
+  }
+  if (esAprobacionRevision && criterios.some((c) => !c.verificadoEncargado)) {
+    error(400, 'Como encargado o revisor, debes verificar todos los criterios antes de aprobar la tarea.');
+  }
+
+  // TW-12: Validaciones al devolver una entrega al miembro
+  if (esDevolucionRevision) {
+    if (!observaciones) {
+      error(400, 'Escribe un mensaje explicando al miembro por qué se le devuelve la actividad.');
     }
-    if (destino === 'TERMINADA' && criterios.some((c) => !c.verificadoEncargado)) {
-      error(400, 'Como encargado o revisor, debes verificar todos los criterios antes de aprobar la tarea.');
+    if (observaciones.length > MAX_OBSERVACIONES_REVISION) {
+      error(400, `El mensaje de devolución no puede superar los ${MAX_OBSERVACIONES_REVISION} caracteres.`);
+    }
+    if (criterios.length > 0 && criterios.every((c) => c.verificadoEncargado)) {
+      error(
+        400,
+        'Deja sin verificar en el checklist al menos un criterio que el miembro no haya alcanzado a cumplir antes de devolver la tarea.'
+      );
     }
   }
 
@@ -419,6 +445,28 @@ export async function cambiarEstado(actor: Actor, tareaId: string, destinoTxt: s
       .where(and(eq(tareas.id, tarea.id), eq(tareas.estado, tarea.estado)))
       .returning({ id: tareas.id });
     if (actualizadas.length === 0) error(409, 'La tarea cambió de estado mientras la editabas. Recarga la página');
+
+    // TW-12: Si el revisor devuelve la tarea, desmarcar del avance del miembro los criterios NO verificados
+    if (esDevolucionRevision) {
+      await tx
+        .update(tareaCriterios)
+        .set({ completado: false })
+        .where(and(eq(tareaCriterios.tareaId, tarea.id), eq(tareaCriterios.verificadoEncargado, false)));
+
+      await tx.insert(tareaRevisiones).values({
+        tareaId: tarea.id,
+        revisorId: actor.id,
+        resultado: 'DEVUELTA',
+        observaciones
+      });
+    } else if (esAprobacionRevision) {
+      await tx.insert(tareaRevisiones).values({
+        tareaId: tarea.id,
+        revisorId: actor.id,
+        resultado: 'APROBADA',
+        observaciones: observaciones || null
+      });
+    }
 
     await tx.insert(tareaEventos).values({
       tareaId: tarea.id,
@@ -594,7 +642,7 @@ export async function resolverReasignacionBD(
 }
 
 /* ------------------------------------------------------------------ */
-/* Detalle de una tarea unificado (TW-06 a TW-11)                      */
+/* Detalle de una tarea unificado (TW-06 a TW-12)                      */
 /* ------------------------------------------------------------------ */
 
 export async function obtenerDetalle(actor: Actor, tareaId: string) {
@@ -607,7 +655,7 @@ export async function obtenerDetalle(actor: Actor, tareaId: string) {
 
   const esJefe = cumpleRol(actor, 'REVISOR', tarea);
 
-  const [personas, proyecto, criterios, archivosBD, eventos, comentarios, delegacionesBD, miembrosDepto] = await Promise.all([
+  const [personas, proyecto, criterios, archivosBD, eventos, comentarios, delegacionesBD, miembrosDepto, revisionesBD] = await Promise.all([
     idsUsuarios.length > 0
       ? db.select({ id: usuarios.id, nombre: usuarios.nombre }).from(usuarios)
         .where(inArray(usuarios.id, idsUsuarios))
@@ -675,7 +723,19 @@ export async function obtenerDetalle(actor: Actor, tareaId: string) {
           )
         )
         .orderBy(asc(usuarios.nombre))
-      : Promise.resolve([])
+      : Promise.resolve([]),
+    // TW-12: Historial de revisiones (aprobaciones y devoluciones con observaciones)
+    db.select({
+      id: tareaRevisiones.id,
+      resultado: tareaRevisiones.resultado,
+      observaciones: tareaRevisiones.observaciones,
+      creadaEn: tareaRevisiones.creadaEn,
+      revisorNombre: usuarios.nombre
+    })
+      .from(tareaRevisiones)
+      .leftJoin(usuarios, eq(tareaRevisiones.revisorId, usuarios.id))
+      .where(eq(tareaRevisiones.tareaId, tarea.id))
+      .orderBy(desc(tareaRevisiones.creadaEn))
   ]);
 
   const persona = (id: string | null) => personas.find((p) => p.id === id) ?? null;
@@ -708,6 +768,21 @@ export async function obtenerDetalle(actor: Actor, tareaId: string) {
     const partes = ultimaRechazadaDelUsuario.motivo.split(' || RECHAZO_ENCARGADO: ');
     motivoUltimaRechazada = partes[1] ?? null;
   }
+
+  // TW-12: Detectar si la tarea se encuentra actualmente devuelta en corrección
+  const ultimaRevision = revisionesBD[0] ?? null;
+  const entregaDevuelta =
+    tarea.estado === 'EN_PROCESO' && ultimaRevision?.resultado === 'DEVUELTA'
+      ? {
+          id: ultimaRevision.id,
+          observaciones: ultimaRevision.observaciones ?? '',
+          creadaEn: ultimaRevision.creadaEn,
+          revisorNombre: ultimaRevision.revisorNombre ?? 'Encargado',
+          criteriosNoCumplidos: criterios
+            .filter((c) => !c.verificadoEncargado)
+            .map((c) => ({ id: c.id, descripcion: c.descripcion }))
+        }
+      : null;
 
   return {
     tarea: {
@@ -752,12 +827,14 @@ export async function obtenerDetalle(actor: Actor, tareaId: string) {
         }
       : null,
     miembrosParaReasignar: miembrosDepto.filter((m) => m.id !== tarea.responsableId),
+    // TW-12: Información de devolución activa para mostrar arriba del checklist
+    entregaDevuelta,
     transicionesPermitidas: esExResponsable ? [] : transicionesPermitidas(actor, tarea.estado, tarea)
   };
 }
 
 /* ------------------------------------------------------------------ */
-/* Lista de tareas con Timeline y estado de Reasignación (TW-03 a 11) */
+/* Lista de tareas con Timeline y estado de Reasignación (TW-03 a 12) */
 /* ------------------------------------------------------------------ */
 
 export async function listarMisTareas(actor: Actor) {
@@ -805,7 +882,7 @@ export async function listarMisTareas(actor: Actor) {
   if (tareasBase.length === 0) return [];
 
   const idsTareas = tareasBase.map((t) => t.id);
-  const [todosLosMensajes, todosLosEventos, delegacionesPendientes] = await Promise.all([
+  const [todosLosMensajes, todosLosEventos, delegacionesPendientes, todasLasRevisiones] = await Promise.all([
     db
       .select({
         id: tareaMensajes.id,
@@ -838,10 +915,27 @@ export async function listarMisTareas(actor: Actor) {
         tareaId: tareaDelegaciones.tareaId
       })
       .from(tareaDelegaciones)
-      .where(and(inArray(tareaDelegaciones.tareaId, idsTareas), eq(tareaDelegaciones.estado, 'PENDIENTE')))
+      .where(and(inArray(tareaDelegaciones.tareaId, idsTareas), eq(tareaDelegaciones.estado, 'PENDIENTE'))),
+    db
+      .select({
+        tareaId: tareaRevisiones.tareaId,
+        resultado: tareaRevisiones.resultado,
+        creadaEn: tareaRevisiones.creadaEn
+      })
+      .from(tareaRevisiones)
+      .where(inArray(tareaRevisiones.tareaId, idsTareas))
+      .orderBy(desc(tareaRevisiones.creadaEn))
   ]);
 
   const tareasConSolicitudPendiente = new Set(delegacionesPendientes.map((d) => d.tareaId));
+
+  // TW-12: Guardar el resultado de la última revisión de cada tarea
+  const ultimoResultadoRevisionPorTarea = new Map<string, 'APROBADA' | 'DEVUELTA'>();
+  for (const rev of todasLasRevisiones) {
+    if (!ultimoResultadoRevisionPorTarea.has(rev.tareaId)) {
+      ultimoResultadoRevisionPorTarea.set(rev.tareaId, rev.resultado);
+    }
+  }
 
   const mensajesPorTarea = new Map<string, ComentarioTarea[]>();
   for (const m of todosLosMensajes) {
@@ -876,10 +970,14 @@ export async function listarMisTareas(actor: Actor) {
     const comentarios = mensajesPorTarea.get(t.id) ?? [];
     const eventos = eventosPorTarea.get(t.id) ?? [];
     const reasignadaDelUsuario = idsTareasReasignadas.has(t.id) && t.responsableId !== actor.id;
+    const devueltaEnRevision =
+      t.estado === 'EN_PROCESO' && ultimoResultadoRevisionPorTarea.get(t.id) === 'DEVUELTA';
+
     return {
       ...t,
       reasignadaDelUsuario,
       tieneSolicitudReasignacion: tareasConSolicitudPendiente.has(t.id),
+      devueltaEnRevision,
       totalComentarios: comentarios.length,
       comentariosRecientes: comentarios,
       eventosRecientes: eventos,
@@ -931,6 +1029,9 @@ export async function toggleCriterioBD(
     }
     if (tarea.estado !== 'ASIGNADA' && tarea.estado !== 'EN_PROCESO') {
       error(400, 'El checklist de avance solo se modifica cuando la tarea está asignada o en proceso');
+    }
+    if (actual.verificadoEncargado && !cumpleRol(actor, 'REVISOR', tarea)) {
+      error(400, 'Este criterio ya fue verificado por el encargado y no requiere modificarse.');
     }
     await db
       .update(tareaCriterios)

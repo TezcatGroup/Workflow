@@ -31,9 +31,10 @@ export const actions: Actions = {
     if (!user) redirect(303, '/login');
     const form = await request.formData();
     const nuevoEstado = campo(form, 'estado');
+    const observaciones = String(form.get('observaciones') ?? '');
 
     try {
-      await cambiarEstado(user, params.id, nuevoEstado);
+      await cambiarEstado(user, params.id, nuevoEstado, observaciones);
       return { ok: 'Estado actualizado correctamente.' };
     } catch (e) {
       if (isHttpError(e)) return fail(e.status, { error: e.body.message });
