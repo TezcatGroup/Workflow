@@ -1,0 +1,1 @@
+ALTER TABLE "tarea_criterios" ADD COLUMN IF NOT EXISTS "verificado_encargado" boolean NOT NULL DEFAULT false;

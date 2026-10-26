@@ -43,6 +43,13 @@
       "when": 1791160846832,
       "tag": "0005_ola5_campos_dashboard",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793052236619,
+      "tag": "0006_verificado_encargado",
+      "breakpoints": true
     }
   ]
 }
