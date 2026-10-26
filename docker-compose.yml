@@ -7,7 +7,7 @@ services:
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@admin.com}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-AdminPassword123!}
       BODY_SIZE_LIMIT: 12M
-      ORIGIN: ${ORIGIN:-https://workflow.tezcatgroup.com}
+      ORIGIN: ${ORIGIN:-http://localhost:3001}
       PORT: ${APP_PORT:-3001}
     ports:
       - "${APP_PORT:-3001}:${APP_PORT:-3001}"
