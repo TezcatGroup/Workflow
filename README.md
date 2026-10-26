@@ -42,6 +42,23 @@ Los comandos asumen los valores predeterminados `POSTGRES_USER=tezcat` y `POSTGR
 
 `docker compose down` detiene los servicios y conserva el volumen `postgres_data`. El archivo Compose publica PostgreSQL únicamente en `127.0.0.1:5433`, para que los comandos locales puedan conectarse sin chocar con una instalación local en 5432. La aplicación usa `db:5432` dentro de la red de Compose. No ejecutar `docker compose down -v` salvo que se quiera borrar la base de datos.
 
+## Despliegue Docker en un solo comando
+
+Para construir la aplicación, iniciar PostgreSQL, aplicar automáticamente todas las migraciones Drizzle, crear o actualizar el administrador inicial y levantar la aplicación, ejecutar desde la raíz del repositorio:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.migrate.yml up -d --build
+```
+
+El servicio `migrate` espera a que PostgreSQL esté saludable y debe finalizar correctamente antes de que arranque `app`. Para una instalación de evaluación sin `.env`, el archivo adicional usa `tezcat` / `PostgresPassword123!` para PostgreSQL y crea el administrador `admin@admin.com` con la contraseña `AdminPassword123!`.
+
+Estas credenciales son públicas y se incluyen únicamente para facilitar el primer despliegue. Antes de exponer la aplicación, definir valores propios (por ejemplo, en `.env`) para `POSTGRES_PASSWORD`, `ADMIN_EMAIL` y `ADMIN_PASSWORD`; la contraseña del administrador debe tener al menos 12 caracteres. Se puede comprobar el estado y consultar la migración con:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.migrate.yml ps
+docker compose -f docker-compose.yml -f docker-compose.migrate.yml logs migrate
+```
+
 ## Desarrollo y verificación
 
 Con la base de datos levantada y el esquema sincronizado:
