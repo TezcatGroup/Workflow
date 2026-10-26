@@ -1,4 +1,21 @@
-# Tezcat Workflow — Sprint 1
+# Tezcat Workflow
+
+## Despliegue Docker en un solo comando
+
+Para construir la aplicación, iniciar PostgreSQL, aplicar automáticamente todas las migraciones Drizzle, crear o actualizar el administrador inicial y levantar la aplicación, ejecuta desde la raíz del repositorio:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.migrate.yml up -d --build
+```
+
+El servicio `migrate` espera a que PostgreSQL esté saludable y debe finalizar correctamente antes de que arranque `app`. Para una instalación de evaluación sin `.env`, el archivo adicional usa `tezcat` / `PostgresPassword123!` para PostgreSQL y crea el administrador `admin@admin.com` con la contraseña `AdminPassword123!`.
+
+Estas credenciales son públicas y se incluyen únicamente para facilitar el primer despliegue. Antes de exponer la aplicación, define valores propios (por ejemplo, en `.env`) para `POSTGRES_PASSWORD`, `ADMIN_EMAIL` y `ADMIN_PASSWORD`; la contraseña del administrador debe tener al menos 12 caracteres. Puedes comprobar el estado y consultar la migración con:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.migrate.yml ps
+docker compose -f docker-compose.yml -f docker-compose.migrate.yml logs migrate
+```
 
 Aplicación SvelteKit con TypeScript, Tailwind, Drizzle ORM y PostgreSQL 16. Implementa TW-01 (acceso y sesiones), TW-02 (usuarios, roles, departamentos y auditoría) y TW-03 (dashboard por rol).
 
@@ -7,6 +24,29 @@ Aplicación SvelteKit con TypeScript, Tailwind, Drizzle ORM y PostgreSQL 16. Imp
 - Windows: instalar Docker Desktop con `winget install --id Docker.DockerDesktop --exact` o desde [Docker Desktop](https://docs.docker.com/desktop/setup/install/windows-install/). Activar WSL 2 con `wsl --install` en PowerShell como administrador y reiniciar cuando Windows lo solicite. Abrir Docker Desktop y esperar a que `docker version` muestre tanto Client como Server.
 - Node.js 22 y pnpm 11 para los comandos de desarrollo. `npm install -g pnpm@11.19.0` instala pnpm. Docker construye la aplicación con su propio Node.js; Node local solo se usa para sincronizar el esquema, crear el administrador y ejecutar las pruebas.
 - Git para clonar el repositorio.
+
+## Despliegue automatizado en Linux
+
+El script `setup-workflow.sh` configura `.env`, levanta PostgreSQL, construye la imagen, aplica las migraciones Drizzle, ejecuta el bootstrap del administrador y levanta la aplicación. También añade de forma idempotente `workflow.tezcatgroup.com` → `http://127.0.0.1:3000` a `~/.cloudflared/tezcatweb.yml`, valida el ingress y reinicia `cloudflared-tezcatweb.service`.
+
+Modo interactivo (los secretos se leen sin mostrarlos):
+
+```bash
+./setup-workflow.sh
+```
+
+Modo automatizado, recomendado con secretos proporcionados por el entorno:
+
+```bash
+POSTGRES_PASSWORD='secreto-url-safe-de-16-o-mas' \
+ADMIN_PASSWORD='clave-url-safe-de-12-o-mas' \
+ADMIN_EMAIL='admin@tezcatgroup.com' \
+./setup-workflow.sh --non-interactive
+```
+
+También se pueden generar los secretos que falten con `./setup-workflow.sh --non-interactive --generate-secrets`. El script no muestra los valores generados; quedan guardados únicamente en `.env` con permisos `600`. Use `--skip-tunnel` para desplegar sin tocar Cloudflare. Se pueden personalizar `ENV_FILE`, `CLOUDFLARED_CONFIG`, `CLOUDFLARED_SERVICE`, `WORKFLOW_HOSTNAME`, `WORKFLOW_ORIGIN` y `PUBLIC_ORIGIN` mediante variables de entorno.
+
+> La regla DNS del hostname debe existir en Cloudflare y apuntar al túnel `tezcatweb`; el script administra el ingress local, no crea ni modifica registros DNS.
 
 ## Configuración inicial con Docker
 
@@ -41,23 +81,6 @@ Get-Content -Raw -Encoding UTF8 database/tezcat_workflow_schema.sql | docker com
 Los comandos asumen los valores predeterminados `POSTGRES_USER=tezcat` y `POSTGRES_DB=tezcat_workflow`; si se modifican en `.env`, sustituirlos también en los comandos. No aplicar el respaldo de esquema sobre una base que ya tenga las tablas ni importar el volcado de datos dos veces. `.env` no se publica: contiene los secretos propios de cada instalación. Para una base real, partir del esquema vacío y crear cuentas nuevas en lugar de importar la muestra universitaria.
 
 `docker compose down` detiene los servicios y conserva el volumen `postgres_data`. El archivo Compose publica PostgreSQL únicamente en `127.0.0.1:5433`, para que los comandos locales puedan conectarse sin chocar con una instalación local en 5432. La aplicación usa `db:5432` dentro de la red de Compose. No ejecutar `docker compose down -v` salvo que se quiera borrar la base de datos.
-
-## Despliegue Docker en un solo comando
-
-Para construir la aplicación, iniciar PostgreSQL, aplicar automáticamente todas las migraciones Drizzle, crear o actualizar el administrador inicial y levantar la aplicación, ejecutar desde la raíz del repositorio:
-
-```bash
-docker compose -f docker-compose.yml -f docker-compose.migrate.yml up -d --build
-```
-
-El servicio `migrate` espera a que PostgreSQL esté saludable y debe finalizar correctamente antes de que arranque `app`. Para una instalación de evaluación sin `.env`, el archivo adicional usa `tezcat` / `PostgresPassword123!` para PostgreSQL y crea el administrador `admin@admin.com` con la contraseña `AdminPassword123!`.
-
-Estas credenciales son públicas y se incluyen únicamente para facilitar el primer despliegue. Antes de exponer la aplicación, definir valores propios (por ejemplo, en `.env`) para `POSTGRES_PASSWORD`, `ADMIN_EMAIL` y `ADMIN_PASSWORD`; la contraseña del administrador debe tener al menos 12 caracteres. Se puede comprobar el estado y consultar la migración con:
-
-```bash
-docker compose -f docker-compose.yml -f docker-compose.migrate.yml ps
-docker compose -f docker-compose.yml -f docker-compose.migrate.yml logs migrate
-```
 
 ## Desarrollo y verificación
 

@@ -10,6 +10,8 @@ services:
       context: .
       target: build
     restart: "no"
+    volumes:
+      - ./drizzle:/app/drizzle:ro
     command: ["sh", "-c", "pnpm db:migrate && pnpm db:bootstrap"]
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-tezcat}:${POSTGRES_PASSWORD:-PostgresPassword123!}@db:5432/${POSTGRES_DB:-tezcat_workflow}
