@@ -1,0 +1,33 @@
+services:
+  db:
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-tezcat_workflow}
+      POSTGRES_USER: ${POSTGRES_USER:-tezcat}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-PostgresPassword123!}
+
+  migrate:
+    build:
+      context: .
+      target: build
+    restart: "no"
+    command: ["sh", "-c", "pnpm db:migrate && pnpm db:bootstrap"]
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-tezcat}:${POSTGRES_PASSWORD:-PostgresPassword123!}@db:5432/${POSTGRES_DB:-tezcat_workflow}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@admin.com}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-AdminPassword123!}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - private
+
+  app:
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-tezcat}:${POSTGRES_PASSWORD:-PostgresPassword123!}@db:5432/${POSTGRES_DB:-tezcat_workflow}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@admin.com}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-AdminPassword123!}
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully

@@ -4,7 +4,9 @@ RUN npm install -g pnpm@11.19.0
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 COPY . .
-RUN pnpm build
+# SvelteKit analiza módulos de servidor durante el build. Esta URL sintáctica
+# evita incorporar el secreto real en una capa; no se realiza conexión alguna.
+RUN DATABASE_URL=postgresql://build:build@127.0.0.1:5432/build pnpm build
 
 FROM node:22-bookworm-slim
 WORKDIR /app
