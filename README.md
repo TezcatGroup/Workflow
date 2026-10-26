@@ -80,7 +80,45 @@ Get-Content -Raw -Encoding UTF8 database/tezcat_workflow_schema.sql | docker com
 
 Los comandos asumen los valores predeterminados `POSTGRES_USER=tezcat` y `POSTGRES_DB=tezcat_workflow`; si se modifican en `.env`, sustituirlos también en los comandos. No aplicar el respaldo de esquema sobre una base que ya tenga las tablas ni importar el volcado de datos dos veces. `.env` no se publica: contiene los secretos propios de cada instalación. Para una base real, partir del esquema vacío y crear cuentas nuevas en lugar de importar la muestra universitaria.
 
-`docker compose down` detiene los servicios y conserva el volumen `postgres_data`. El archivo Compose publica PostgreSQL únicamente en `127.0.0.1:5433`, para que los comandos locales puedan conectarse sin chocar con una instalación local en 5432. La aplicación usa `db:5432` dentro de la red de Compose. No ejecutar `docker compose down -v` salvo que se quiera borrar la base de datos.
+El archivo Compose publica PostgreSQL únicamente en `127.0.0.1:5433`, para que los comandos locales puedan conectarse sin chocar con una instalación local en 5432. La aplicación usa `db:5432` dentro de la red de Compose.
+
+## Persistencia de Docker y solución de problemas
+
+### Persistencia de datos
+
+PostgreSQL guarda sus datos en el volumen de Docker `postgres_data`. Un ciclo normal de `docker compose down` seguido de `docker compose up` detiene y vuelve a crear los contenedores, pero **no elimina el volumen**: las bases de datos, tablas, usuarios y contraseñas existentes se conservan.
+
+Las variables `POSTGRES_USER`, `POSTGRES_PASSWORD` y `POSTGRES_DB` solo inicializan PostgreSQL cuando el volumen se crea por primera vez. En arranques posteriores, cambiar o eliminar `.env` no modifica automáticamente el usuario ni su contraseña dentro de la base ya existente.
+
+### Error común: contraseña de `tezcat`
+
+Si se reinicia el despliegue con un volumen existente después de cambiar `POSTGRES_PASSWORD`, o si se elimina o modifica `.env`, la aplicación o el servicio `migrate` pueden mostrar:
+
+```text
+password authentication failed for user "tezcat"
+```
+
+Esto significa que la contraseña con la que los servicios intentan conectarse ya no coincide con la almacenada en PostgreSQL; no significa que se hayan perdido los datos.
+
+### Corregir la contraseña conservando los datos
+
+Primero, asegúrate de que el servicio `db` esté en ejecución. Para hacer que el usuario existente vuelva a usar la contraseña predeterminada de los archivos Compose, ejecuta:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.migrate.yml exec db psql -U tezcat -d postgres -c "ALTER USER tezcat WITH PASSWORD 'PostgresPassword123!';"
+```
+
+Si `.env` define otro valor para `POSTGRES_PASSWORD`, sustituye `PostgresPassword123!` en el comando por ese valor exacto. Después vuelve a levantar el despliegue normalmente. Este procedimiento modifica únicamente la contraseña del usuario y conserva las bases, tablas y registros del volumen.
+
+### Formatear / empezar desde cero
+
+Para eliminar por completo la base de datos y reinicializar PostgreSQL con los valores actuales de `.env` (o con los valores predeterminados si no existe), ejecuta:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.migrate.yml down -v
+```
+
+> **Advertencia:** `down -v` borra permanentemente el volumen `postgres_data` y todos sus datos. Después ejecuta de nuevo el comando de despliegue para crear una base limpia.
 
 ## Desarrollo y verificación
 
