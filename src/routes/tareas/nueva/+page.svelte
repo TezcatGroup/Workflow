@@ -13,6 +13,14 @@
 
   const v = $derived(form?.valores);
 
+  // TW-13: tipo de tarea — OBLIGATORIA se asigna a un miembro, OPCIONAL se publica en el Muro.
+  // Se restaura desde form.valores cuando el backend incluya el campo "tipo" (por ahora no lo trae).
+  const tipoInicial = untrack(() => (form?.valores as { tipo?: string } | undefined)?.tipo);
+  let tipo = $state<'OBLIGATORIA' | 'OPCIONAL'>(
+    tipoInicial === 'OPCIONAL' ? 'OPCIONAL' : 'OBLIGATORIA'
+  );
+  const esOpcional = $derived(tipo === 'OPCIONAL');
+
   // Los criterios se cargan una sola vez con lo que la persona escribió si hubo un error.
   let criterios = $state<string[]>(
     untrack(() => (form?.valores?.criterios?.length ? [...form.valores.criterios] : ['']))
@@ -68,7 +76,9 @@
   }
 </script>
 
-<svelte:head><title>Nueva tarea obligatoria | Tezcat Workflow</title></svelte:head>
+<svelte:head>
+  <title>Nueva tarea {esOpcional ? 'opcional' : 'obligatoria'} | Tezcat Workflow</title>
+</svelte:head>
 
 <div class="min-h-screen bg-tezcat-bg font-sans text-tezcat-textPrimary antialiased">
   <EncabezadoApp user={data.user} />
@@ -84,12 +94,21 @@
         Volver a tareas
       </a>
       <p class="mt-4 font-mono text-[11px] font-semibold tracking-widest text-tezcat-cyan uppercase">
-        TW-04 · TW-08 · Tareas obligatorias y recursos
+        TW-04 · TW-08 · TW-13 · Tareas obligatorias y opcionales
       </p>
-      <h1 class="mt-1 text-2xl font-bold tracking-tight text-white">Nueva tarea obligatoria</h1>
-      <p class="mt-1.5 text-xs text-tezcat-textSecondary">
-        Define al miembro responsable de la tarea, fecha límite, criterios verificables y adjunta material de apoyo. Las tareas obligatorias no otorgan XP, puntos ni ramas.
-      </p>
+      <h1 class="mt-1 text-2xl font-bold tracking-tight text-white">
+        Nueva tarea {esOpcional ? 'opcional' : 'obligatoria'}
+      </h1>
+      {#if esOpcional}
+        <p class="mt-1.5 text-xs text-tezcat-textSecondary">
+          Define fecha límite, criterios verificables y adjunta material de apoyo. Esta tarea se
+          publicará en el Muro: cualquier miembro podrá tomarla voluntariamente.
+        </p>
+      {:else}
+        <p class="mt-1.5 text-xs text-tezcat-textSecondary">
+          Define al miembro responsable de la tarea, fecha límite, criterios verificables y adjunta material de apoyo. Las tareas obligatorias no otorgan XP, puntos ni ramas.
+        </p>
+      {/if}
     </div>
 
     <!-- Tarjeta -->
@@ -117,6 +136,77 @@
           };
         }}
       >
+        <!-- Tipo de tarea (TW-13): obligatoria u opcional -->
+        <fieldset>
+          <legend class={etiqueta}>Tipo de tarea *</legend>
+          <div class="grid gap-3 sm:grid-cols-2">
+            <button
+              type="button"
+              onclick={() => (tipo = 'OBLIGATORIA')}
+              aria-pressed={tipo === 'OBLIGATORIA'}
+              class="flex items-start gap-3 rounded-xl border p-4 text-left transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-tezcat-cyan/60
+                {tipo === 'OBLIGATORIA'
+                  ? 'border-amber-400/70 bg-amber-400/10'
+                  : 'border-tezcat-border bg-tezcat-bg hover:border-tezcat-borderHighlight'}"
+            >
+              <span
+                class="material-symbols-outlined text-xl
+                  {tipo === 'OBLIGATORIA' ? 'text-amber-300' : 'text-tezcat-textMuted'}"
+              >
+                assignment_ind
+              </span>
+              <span class="min-w-0 flex-1">
+                <span
+                  class="block text-sm font-bold
+                    {tipo === 'OBLIGATORIA' ? 'text-amber-300' : 'text-tezcat-textPrimary'}"
+                >
+                  Obligatoria
+                </span>
+                <span class="mt-0.5 block text-[11px] leading-relaxed text-tezcat-textSecondary">
+                  Se asigna a un miembro específico y entra directo al flujo normal de trabajo.
+                </span>
+              </span>
+              {#if tipo === 'OBLIGATORIA'}
+                <span class="material-symbols-outlined text-base text-amber-300">check_circle</span>
+              {/if}
+            </button>
+
+            <button
+              type="button"
+              onclick={() => (tipo = 'OPCIONAL')}
+              aria-pressed={tipo === 'OPCIONAL'}
+              class="flex items-start gap-3 rounded-xl border p-4 text-left transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-tezcat-cyan/60
+                {tipo === 'OPCIONAL'
+                  ? 'border-emerald-400/70 bg-emerald-400/10'
+                  : 'border-tezcat-border bg-tezcat-bg hover:border-tezcat-borderHighlight'}"
+            >
+              <span
+                class="material-symbols-outlined text-xl
+                  {tipo === 'OPCIONAL' ? 'text-emerald-300' : 'text-tezcat-textMuted'}"
+              >
+                volunteer_activism
+              </span>
+              <span class="min-w-0 flex-1">
+                <span
+                  class="block text-sm font-bold
+                    {tipo === 'OPCIONAL' ? 'text-emerald-300' : 'text-tezcat-textPrimary'}"
+                >
+                  Opcional
+                </span>
+                <span class="mt-0.5 block text-[11px] leading-relaxed text-tezcat-textSecondary">
+                  Se publica en el Muro: la toma cualquier miembro que quiera contribuir
+                  voluntariamente.
+                </span>
+              </span>
+              {#if tipo === 'OPCIONAL'}
+                <span class="material-symbols-outlined text-base text-emerald-300">check_circle</span>
+              {/if}
+            </button>
+          </div>
+
+          <input type="hidden" name="tipo" value={tipo} />
+        </fieldset>
+
         <!-- Título -->
         <div>
           <label class={etiqueta} for="titulo">Título de la tarea *</label>
@@ -157,20 +247,34 @@
 
         <!-- Responsable / Revisor -->
         <div class="grid gap-5 sm:grid-cols-2">
-          <div>
-            <label class={etiqueta} for="responsableId">Miembro Responsable *</label>
-            <div class="relative rounded-xl shadow-sm">
-              <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 text-tezcat-textMuted">
-                <span class="material-symbols-outlined text-lg">person</span>
-              </div>
-              <select id="responsableId" name="responsableId" required class={campo}>
-                <option value="">Selecciona…</option>
-                {#each data.responsables as r (r.id)}
-                  <option value={r.id} selected={v?.responsableId === r.id}>{r.nombre}</option>
-                {/each}
-              </select>
+          {#if esOpcional}
+            <!-- TW-13: las tareas opcionales no se asignan a nadie -->
+            <div class="self-start rounded-xl border border-emerald-400/30 bg-emerald-400/5 p-4">
+              <p class="flex items-center gap-1.5 text-xs font-semibold text-emerald-300">
+                <span class="material-symbols-outlined text-sm">volunteer_activism</span>
+                Sin responsable asignado
+              </p>
+              <p class="mt-1.5 text-[11px] leading-relaxed text-tezcat-textSecondary">
+                Las tareas opcionales no se asignan a nadie: se publican en el Muro y cualquier
+                miembro podrá tomarla voluntariamente cuando quiera contribuir.
+              </p>
             </div>
-          </div>
+          {:else}
+            <div>
+              <label class={etiqueta} for="responsableId">Miembro Responsable *</label>
+              <div class="relative rounded-xl shadow-sm">
+                <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 text-tezcat-textMuted">
+                  <span class="material-symbols-outlined text-lg">person</span>
+                </div>
+                <select id="responsableId" name="responsableId" required class={campo}>
+                  <option value="">Selecciona…</option>
+                  {#each data.responsables as r (r.id)}
+                    <option value={r.id} selected={v?.responsableId === r.id}>{r.nombre}</option>
+                  {/each}
+                </select>
+              </div>
+            </div>
+          {/if}
 
           <div>
             <label class={etiqueta} for="revisorId">
@@ -393,7 +497,7 @@
               <span class="material-symbols-outlined animate-spin text-lg">refresh</span>
               <span>Creando…</span>
             {:else}
-              <span>Crear tarea obligatoria</span>
+              <span>Crear tarea {esOpcional ? 'opcional' : 'obligatoria'}</span>
               <span class="material-symbols-outlined text-sm font-bold">arrow_forward</span>
             {/if}
           </button>
