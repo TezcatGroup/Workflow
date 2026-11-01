@@ -163,15 +163,52 @@
     }
   }
 
+  // ───────────────────────────────────────────────────────────────────────────
+  // TW-15: conversión de opcional a obligatoria.
+  // El ENCARGADO confirma en un modal; el backend (contrato Sprint 7) hará la
+  // asignación a un MIEMBRO aleatorio. La vista solo presenta la confirmación
+  // y el resultado, la regla vive en el servidor.
+  // ───────────────────────────────────────────────────────────────────────────
+  let conversionPendiente = $state<Oportunidad | null>(null);
+  let confirmandoConversion = $state(false);
+  let convertidas = $state<string[]>([]);
+  let avisoConversion = $state('');
+
+  function pedirConversion(op: Oportunidad) {
+    conversionPendiente = op;
+  }
+
+  function cancelarConversion() {
+    conversionPendiente = null;
+  }
+
+  async function confirmarConversion() {
+    if (!conversionPendiente) return;
+    confirmandoConversion = true;
+    // TODO (contrato Sprint 7): reemplazar esta espera simulada por el POST
+    // real de conversión. El servidor elige un MIEMBRO aleatorio y responde
+    // con el nombre de la persona asignada para mostrarlo en el aviso.
+    await new Promise((r) => setTimeout(r, 800));
+    convertidas = [...convertidas, conversionPendiente.id];
+    avisoConversion = `«${conversionPendiente.titulo}» se convirtió en obligatoria. La asignación al miembro aleatorio la hará el backend cuando el contrato esté listo.`;
+    confirmandoConversion = false;
+    conversionPendiente = null;
+  }
+
   const visibles = $derived(
-    oportunidades.filter((op) => {
-      const termino = busqueda.trim().toLowerCase();
-      const coincideBusqueda =
-        termino === '' || `${op.titulo} ${op.descripcion}`.toLowerCase().includes(termino);
-      const coincideFiltros =
-        filtrosActivos.length === 0 || op.etiquetas.some((et) => filtrosActivos.includes(et.nombre));
-      return coincideBusqueda && coincideFiltros;
-    })
+    oportunidades.filter(
+      (op) =>
+        !convertidas.includes(op.id) &&
+        (function (op) {
+          const termino = busqueda.trim().toLowerCase();
+          const coincideBusqueda =
+            termino === '' || `${op.titulo} ${op.descripcion}`.toLowerCase().includes(termino);
+          const coincideFiltros =
+            filtrosActivos.length === 0 ||
+            op.etiquetas.some((et) => filtrosActivos.includes(et.nombre));
+          return coincideBusqueda && coincideFiltros;
+        })(op)
+    )
   );
 
   const hayFiltros = $derived(busqueda.trim() !== '' || filtrosActivos.length > 0);
@@ -186,6 +223,12 @@
   <title>Muro de oportunidades | Tezcat Workflow</title>
 </svelte:head>
 
+<svelte:window
+  onkeydown={(e) => {
+    if (e.key === 'Escape' && conversionPendiente && !confirmandoConversion) cancelarConversion();
+  }}
+/>
+
 <div class="min-h-screen bg-tezcat-bg font-sans text-tezcat-textPrimary antialiased">
   <EncabezadoApp user={data.user} />
 
@@ -194,7 +237,7 @@
     <div class="mb-7 flex flex-wrap items-end justify-between gap-4">
       <div>
         <p class="font-mono text-[11px] font-semibold tracking-widest text-tezcat-cyan uppercase">
-          TW-13 · TW-14 · Trabajo voluntario
+          TW-13 · TW-14 · TW-15 · Trabajo voluntario
         </p>
         <h1 class="mt-1 text-2xl font-bold tracking-tight text-white">Muro de oportunidades</h1>
         <p class="mt-1.5 max-w-2xl text-xs text-tezcat-textSecondary">
@@ -213,6 +256,26 @@
         </a>
       {/if}
     </div>
+
+    <!-- Aviso de conversión reciente (TW-15) -->
+    {#if avisoConversion}
+      <div
+        class="mb-5 flex items-start justify-between gap-3 rounded-xl border border-amber-400/40 bg-amber-400/10 p-3.5 text-xs text-amber-200"
+      >
+        <span class="flex items-start gap-2">
+          <span class="material-symbols-outlined shrink-0 text-base">check_circle</span>
+          {avisoConversion}
+        </span>
+        <button
+          type="button"
+          onclick={() => (avisoConversion = '')}
+          aria-label="Cerrar aviso"
+          class="shrink-0 text-amber-200/70 transition-colors hover:text-amber-200"
+        >
+          <span class="material-symbols-outlined text-base">close</span>
+        </button>
+      </div>
+    {/if}
 
     <!-- Búsqueda y filtros (TW-14) -->
     <section class="mb-6 space-y-3" aria-label="Búsqueda y filtros del Muro">
@@ -377,9 +440,10 @@
                     Tomar tarea
                   </button>
                 {:else}
-                  <!-- TODO: conectar con el endpoint de conversión y asignación aleatoria (TW-15) -->
+                  <!-- TW-15: abrir modal de confirmación de conversión -->
                   <button
                     type="button"
+                    onclick={() => pedirConversion(op)}
                     class="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-amber-400/50 bg-amber-400/10 px-4 py-2.5 text-xs font-bold tracking-wide text-amber-300 transition-colors hover:bg-amber-400/20"
                   >
                     <span class="material-symbols-outlined text-base">upgrade</span>
@@ -419,6 +483,77 @@
           Cuando un encargado publique una tarea opcional aparecerá aquí, lista para que cualquier
           miembro la tome voluntariamente.
         </p>
+      </div>
+    {/if}
+
+    <!-- Modal TW-15: confirmar conversión de opcional a obligatoria -->
+    {#if conversionPendiente}
+      <div class="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <button
+          type="button"
+          aria-label="Cerrar y cancelar"
+          onclick={cancelarConversion}
+          class="absolute inset-0 bg-slate-950/70 backdrop-blur-sm"
+        ></button>
+
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="titulo-modal-conversion"
+          class="relative w-full max-w-md rounded-2xl border border-amber-400/40 bg-tezcat-card p-6 shadow-2xl"
+        >
+          <div class="flex items-start gap-3">
+            <span
+              class="flex size-10 shrink-0 items-center justify-center rounded-xl border border-amber-400/40 bg-amber-400/10"
+            >
+              <span class="material-symbols-outlined text-xl text-amber-300">upgrade</span>
+            </span>
+            <div class="min-w-0">
+              <h2 id="titulo-modal-conversion" class="text-sm font-bold text-white">
+                Convertir en obligatoria
+              </h2>
+              <p class="mt-0.5 text-[11px] text-tezcat-textSecondary">
+                La tarea «{conversionPendiente.titulo}» saldrá del Muro.
+              </p>
+            </div>
+          </div>
+
+          <div class="mt-4 rounded-xl border border-amber-400/30 bg-amber-400/10 p-3.5 text-xs leading-relaxed text-amber-200">
+            <p class="flex items-start gap-2">
+              <span class="material-symbols-outlined shrink-0 text-base">shuffle</span>
+              <span>
+                Al confirmar, el sistema asignará esta tarea a un <strong>miembro aleatorio</strong>
+                y pasará al flujo normal de trabajo (asignada → en proceso → revisión → terminada).
+                Esta acción no se puede deshacer.
+              </span>
+            </p>
+          </div>
+
+          <div class="mt-5 flex flex-col-reverse gap-2.5 sm:flex-row sm:justify-end">
+            <button
+              type="button"
+              onclick={cancelarConversion}
+              disabled={confirmandoConversion}
+              class="inline-flex items-center justify-center rounded-xl border border-tezcat-border px-4 py-2.5 text-xs font-semibold text-tezcat-textSecondary transition-colors hover:border-tezcat-borderHighlight hover:text-tezcat-textPrimary disabled:opacity-60"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onclick={confirmarConversion}
+              disabled={confirmandoConversion}
+              class="inline-flex items-center justify-center gap-2 rounded-xl border border-amber-400/50 bg-amber-400/20 px-5 py-2.5 text-xs font-bold tracking-wide text-amber-200 transition-colors hover:bg-amber-400/30 disabled:opacity-70"
+            >
+              {#if confirmandoConversion}
+                <span class="material-symbols-outlined animate-spin text-base">refresh</span>
+                <span>Convirtiendo…</span>
+              {:else}
+                <span class="material-symbols-outlined text-base">upgrade</span>
+                <span>Sí, convertir</span>
+              {/if}
+            </button>
+          </div>
+        </div>
       </div>
     {/if}
   </main>
