@@ -9,8 +9,9 @@
     ADMIN: [
       ['Inicio', '/admin'],
       ['Tareas', '/tareas'],
-      ['Muro', '/muro'],
+      ['Usuarios', '/admin/usuarios'],
       ['Departamentos', '/admin/departamentos'],
+      ['Etiquetas', '/admin/etiquetas'],
       ['Auditoría', '/admin/auditoria'],
       ['Perfil', '/perfil']
     ],
