@@ -3,7 +3,7 @@
   let { children } = $props();
 
   // Pantallas que ya traen el encabezado nuevo. Al rediseñar otra, agrégala aquí.
-  const conEncabezadoNuevo = ['/admin', '/admin/usuarios'];
+  const conEncabezadoNuevo = ['/admin', '/admin/usuarios', '/admin/etiquetas'];
 </script>
 
 {#if !conEncabezadoNuevo.includes(page.url.pathname)}
