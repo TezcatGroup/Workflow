@@ -21,6 +21,48 @@
   );
   const esOpcional = $derived(tipo === 'OPCIONAL');
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // TW-14: etiquetas del Muro para tareas opcionales.
+  // TODO (contrato Sprint 7): reemplazar esta lista de ejemplo por las
+  // etiquetas reales del departamento del encargado cuando el backend las
+  // exponga en opcionesParaCrear (el ADMIN las crea en /admin/etiquetas).
+  // ─────────────────────────────────────────────────────────────────────────
+  type Categoria = 'LENGUAJE DE PROGRAMACIÓN' | 'FRAMEWORK';
+  type EtiquetaMuro = { nombre: string; categoria: Categoria };
+
+  const etiquetasMuro: EtiquetaMuro[] = [
+    { nombre: 'TypeScript', categoria: 'LENGUAJE DE PROGRAMACIÓN' },
+    { nombre: 'JavaScript', categoria: 'LENGUAJE DE PROGRAMACIÓN' },
+    { nombre: 'Python', categoria: 'LENGUAJE DE PROGRAMACIÓN' },
+    { nombre: 'SQL', categoria: 'LENGUAJE DE PROGRAMACIÓN' },
+    { nombre: 'Svelte', categoria: 'FRAMEWORK' },
+    { nombre: 'React', categoria: 'FRAMEWORK' },
+    { nombre: 'Tailwind CSS', categoria: 'FRAMEWORK' }
+  ];
+
+  // La "imagen" de cada etiqueta es un emoji por categoría (decisión del equipo).
+  const emojiPorCategoria: Record<Categoria, string> = {
+    'LENGUAJE DE PROGRAMACIÓN': '🖥️',
+    FRAMEWORK: '🧩'
+  };
+  const claseChipPorCategoria: Record<Categoria, string> = {
+    'LENGUAJE DE PROGRAMACIÓN': 'border-tezcat-cyan/40 bg-tezcat-cyan/10 text-tezcat-cyan',
+    FRAMEWORK: 'border-purple-400/40 bg-purple-400/10 text-purple-300'
+  };
+
+  // Se restaura desde form.valores cuando el backend incluya "etiquetas" (igual que tipo).
+  let etiquetasSeleccionadas = $state<string[]>(
+    untrack(
+      () => (form?.valores as { etiquetas?: string[] } | undefined)?.etiquetas ?? []
+    )
+  );
+
+  function alternarEtiqueta(nombre: string) {
+    etiquetasSeleccionadas = etiquetasSeleccionadas.includes(nombre)
+      ? etiquetasSeleccionadas.filter((n) => n !== nombre)
+      : [...etiquetasSeleccionadas, nombre];
+  }
+
   // Los criterios se cargan una sola vez con lo que la persona escribió si hubo un error.
   let criterios = $state<string[]>(
     untrack(() => (form?.valores?.criterios?.length ? [...form.valores.criterios] : ['']))
@@ -94,7 +136,7 @@
         Volver a tareas
       </a>
       <p class="mt-4 font-mono text-[11px] font-semibold tracking-widest text-tezcat-cyan uppercase">
-        TW-04 · TW-08 · TW-13 · Tareas obligatorias y opcionales
+        TW-04 · TW-08 · TW-13 · TW-14 · Tareas obligatorias y opcionales
       </p>
       <h1 class="mt-1 text-2xl font-bold tracking-tight text-white">
         Nueva tarea {esOpcional ? 'opcional' : 'obligatoria'}
@@ -206,6 +248,49 @@
 
           <input type="hidden" name="tipo" value={tipo} />
         </fieldset>
+
+        <!-- Etiquetas del Muro (TW-14): solo para tareas opcionales -->
+        {#if esOpcional}
+          <fieldset>
+            <legend class={etiqueta}>
+              Etiquetas del Muro <span class="text-tezcat-textMuted normal-case">(TW-14)</span>
+            </legend>
+            <p class="mb-2.5 text-[11px] text-tezcat-textMuted">
+              Marca las habilidades o tecnologías relacionadas con esta tarea: los miembros
+              filtrarán el Muro por estas etiquetas para encontrar oportunidades compatibles con
+              lo que saben hacer.
+            </p>
+            <div class="flex flex-wrap gap-2">
+              {#each etiquetasMuro as et (et.nombre)}
+                {@const marcada = etiquetasSeleccionadas.includes(et.nombre)}
+                <button
+                  type="button"
+                  onclick={() => alternarEtiqueta(et.nombre)}
+                  aria-pressed={marcada}
+                  class="inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 font-mono text-[11px] font-semibold transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-tezcat-cyan/60
+                    {marcada
+                      ? claseChipPorCategoria[et.categoria]
+                      : 'border-tezcat-border bg-tezcat-bg text-tezcat-textSecondary hover:border-tezcat-borderHighlight hover:text-tezcat-textPrimary'}"
+                >
+                  <span aria-hidden="true">{emojiPorCategoria[et.categoria]}</span>
+                  {et.nombre}
+                  {#if marcada}
+                    <span class="material-symbols-outlined text-xs" aria-hidden="true">check</span>
+                  {/if}
+                </button>
+              {/each}
+            </div>
+            {#if etiquetasSeleccionadas.length === 0}
+              <p class="mt-2 font-mono text-[10px] text-tezcat-textMuted">
+                Opcional: puedes publicarla sin etiquetas y asignarlas después.
+              </p>
+            {/if}
+            <!-- Solo las seleccionadas viajan con el formulario (contrato Sprint 7) -->
+            {#each etiquetasSeleccionadas as nombre (nombre)}
+              <input type="hidden" name="etiquetas" value={nombre} />
+            {/each}
+          </fieldset>
+        {/if}
 
         <!-- Título -->
         <div>
