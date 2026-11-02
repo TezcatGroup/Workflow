@@ -1,14 +1,10 @@
 <script lang="ts">
-  import type { PageData } from './$types';
+  import { enhance } from '$app/forms';
+  import type { ActionData, PageData } from './$types';
   import EncabezadoApp from '$lib/components/EncabezadoApp.svelte';
 
-  let { data }: { data: PageData } = $props();
+  let { data, form }: { data: PageData; form: ActionData } = $props();
 
-  // ───────────────────────────────────────────────────────────────────────────
-  // DATOS DE EJEMPLO (maquetación TW-13).
-  // TODO (contrato Sprint 7): reemplazar por los datos reales que cargue el
-  // +page.server.ts cuando el backend publique el endpoint del Muro.
-  // ───────────────────────────────────────────────────────────────────────────
   type Categoria = 'LENGUAJE DE PROGRAMACIÓN' | 'FRAMEWORK';
   type Etiqueta = { nombre: string; categoria: Categoria };
   type Oportunidad = {
@@ -30,84 +26,10 @@
     FRAMEWORK: 'border-purple-400/40 bg-purple-400/10 text-purple-300'
   };
 
-  // Fechas relativas para que la maquetación nunca se vea vencida con el tiempo.
-  const enDias = (dias: number) =>
-    new Date(Date.now() + dias * 86_400_000).toISOString().slice(0, 10);
-
-  const oportunidades: Oportunidad[] = [
-    {
-      id: 'ej-01',
-      titulo: 'Documentar endpoints del laboratorio',
-      descripcion:
-        'Redactar y publicar la referencia de los endpoints internos del sistema, con ejemplos de petición y respuesta para cada uno.',
-      encargado: 'Luis Lopez',
-      fechaLimite: enDias(12),
-      etiquetas: [
-        { nombre: 'TypeScript', categoria: 'LENGUAJE DE PROGRAMACIÓN' },
-        { nombre: 'Svelte', categoria: 'FRAMEWORK' }
-      ]
-    },
-    {
-      id: 'ej-02',
-      titulo: 'Script de respaldo de la base de datos',
-      descripcion:
-        'Crear un script que genere respaldos automáticos semanales de PostgreSQL y conserve el historial del último mes.',
-      encargado: 'Luis Lopez',
-      fechaLimite: enDias(2),
-      etiquetas: [
-        { nombre: 'SQL', categoria: 'LENGUAJE DE PROGRAMACIÓN' },
-        { nombre: 'Python', categoria: 'LENGUAJE DE PROGRAMACIÓN' }
-      ]
-    },
-    {
-      id: 'ej-03',
-      titulo: 'Rediseñar la pantalla de perfil',
-      descripcion:
-        'Modernizar la vista de perfil con la paleta Tezcat, incluyendo estados vacíos y la versión para móvil.',
-      encargado: 'Luis Lopez',
-      fechaLimite: enDias(5),
-      etiquetas: [
-        { nombre: 'Svelte', categoria: 'FRAMEWORK' },
-        { nombre: 'Tailwind CSS', categoria: 'FRAMEWORK' }
-      ]
-    },
-    {
-      id: 'ej-04',
-      titulo: 'Chatbot de dudas frecuentes',
-      descripcion:
-        'Prototipo conversacional que responda las preguntas más comunes del laboratorio a partir de un banco de respuestas.',
-      encargado: 'Luis Lopez',
-      fechaLimite: enDias(20),
-      etiquetas: [{ nombre: 'Python', categoria: 'LENGUAJE DE PROGRAMACIÓN' }]
-    },
-    {
-      id: 'ej-05',
-      titulo: 'Panel de métricas de uso de equipos',
-      descripcion:
-        'Pequeño tablero con gráficas de uso de las máquinas del laboratorio por semana, para detectar las horas valle.',
-      encargado: 'Luis Lopez',
-      fechaLimite: enDias(-1),
-      etiquetas: [
-        { nombre: 'TypeScript', categoria: 'LENGUAJE DE PROGRAMACIÓN' },
-        { nombre: 'React', categoria: 'FRAMEWORK' }
-      ]
-    },
-    {
-      id: 'ej-06',
-      titulo: 'Automatizar registro de entradas',
-      descripcion:
-        'Sustituir el registro en papel con un lector de códigos que alimente la bitácora digital del laboratorio.',
-      encargado: 'Luis Lopez',
-      fechaLimite: enDias(8),
-      etiquetas: [
-        { nombre: 'Python', categoria: 'LENGUAJE DE PROGRAMACIÓN' },
-        { nombre: 'SQL', categoria: 'LENGUAJE DE PROGRAMACIÓN' }
-      ]
-    }
-  ];
+  const oportunidades = $derived(data.oportunidades);
 
   function diasRestantes(fecha: string): number {
-    return Math.ceil((new Date(`${fecha}T00:00:00`).getTime() - Date.now()) / 86_400_000);
+    return Math.ceil((new Date(fecha).getTime() - Date.now()) / 86_400_000);
   }
 
   function claseFecha(fecha: string): string {
@@ -118,7 +40,7 @@
   }
 
   function formatearFecha(fecha: string): string {
-    return new Date(`${fecha}T00:00:00`).toLocaleDateString('es-MX', {
+    return new Date(fecha).toLocaleDateString('es-MX', {
       day: 'numeric',
       month: 'short'
     });
@@ -129,8 +51,6 @@
   // El miembro arrastra chips del recuadro "Disponibles" al recuadro
   // "Filtros activos" (o hace clic: el arrastre no funciona en pantallas
   // táctiles). Las tareas con CUALQUIERA de las etiquetas activas son visibles.
-  // TODO (contrato Sprint 7): cuando el backend exponga las etiquetas por
-  // departamento, etiquetasDisponibles se llena desde data en lugar del Muro.
   // ───────────────────────────────────────────────────────────────────────────
   let busqueda = $state('');
   let filtrosActivos = $state<string[]>([]);
@@ -163,16 +83,9 @@
     }
   }
 
-  // ───────────────────────────────────────────────────────────────────────────
-  // TW-15: conversión de opcional a obligatoria.
-  // El ENCARGADO confirma en un modal; el backend (contrato Sprint 7) hará la
-  // asignación a un MIEMBRO aleatorio. La vista solo presenta la confirmación
-  // y el resultado, la regla vive en el servidor.
-  // ───────────────────────────────────────────────────────────────────────────
   let conversionPendiente = $state<Oportunidad | null>(null);
   let confirmandoConversion = $state(false);
-  let convertidas = $state<string[]>([]);
-  let avisoConversion = $state('');
+  const avisoConversion = $derived(form?.ok ?? '');
 
   function pedirConversion(op: Oportunidad) {
     conversionPendiente = op;
@@ -182,23 +95,10 @@
     conversionPendiente = null;
   }
 
-  async function confirmarConversion() {
-    if (!conversionPendiente) return;
-    confirmandoConversion = true;
-    // TODO (contrato Sprint 7): reemplazar esta espera simulada por el POST
-    // real de conversión. El servidor elige un MIEMBRO aleatorio y responde
-    // con el nombre de la persona asignada para mostrarlo en el aviso.
-    await new Promise((r) => setTimeout(r, 800));
-    convertidas = [...convertidas, conversionPendiente.id];
-    avisoConversion = `«${conversionPendiente.titulo}» se convirtió en obligatoria. La asignación al miembro aleatorio la hará el backend cuando el contrato esté listo.`;
-    confirmandoConversion = false;
-    conversionPendiente = null;
-  }
 
   const visibles = $derived(
     oportunidades.filter(
       (op) =>
-        !convertidas.includes(op.id) &&
         (function (op) {
           const termino = busqueda.trim().toLowerCase();
           const coincideBusqueda =
@@ -257,6 +157,7 @@
       {/if}
     </div>
 
+    {#if form?.error}<p role="alert" class="mb-5 rounded-xl border border-red-400/40 p-4 text-sm text-red-300">{form.error}</p>{/if}
     <!-- Aviso de conversión reciente (TW-15) -->
     {#if avisoConversion}
       <div
@@ -268,7 +169,7 @@
         </span>
         <button
           type="button"
-          onclick={() => (avisoConversion = '')}
+          onclick={() => (form = null)}
           aria-label="Cerrar aviso"
           class="shrink-0 text-amber-200/70 transition-colors hover:text-amber-200"
         >
@@ -431,14 +332,14 @@
             {#if data.user.rol === 'MIEMBRO' || data.user.rol === 'ENCARGADO'}
               <div class="mt-4 border-t border-tezcat-border/70 pt-4">
                 {#if data.user.rol === 'MIEMBRO'}
-                  <!-- TODO: conectar con el endpoint "tomar tarea" del contrato (TW-13) -->
-                  <button
-                    type="button"
-                    class="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-linear-to-r from-emerald-400 to-teal-400 px-4 py-2.5 text-xs font-bold tracking-wide text-slate-950 transition-all hover:from-emerald-300 hover:to-teal-300 active:scale-[0.99]"
-                  >
-                    <span class="material-symbols-outlined text-base">volunteer_activism</span>
-                    Tomar tarea
-                  </button>
+                  <details class="text-sm">
+                    <summary class="cursor-pointer font-semibold text-tezcat-cyan">Ver descripción completa y tomar tarea</summary>
+                    <p class="my-4 whitespace-pre-wrap break-words text-tezcat-textSecondary">{op.descripcion || 'Sin descripción adicional.'}</p>
+                    <form method="POST" action="?/tomar" use:enhance>
+                      <input type="hidden" name="tareaId" value={op.id} />
+                      <button type="submit" class="w-full rounded-xl bg-emerald-400 px-4 py-3 font-bold text-slate-950">Tomar tarea</button>
+                    </form>
+                  </details>
                 {:else}
                   <!-- TW-15: abrir modal de confirmación de conversión -->
                   <button
@@ -500,7 +401,7 @@
           role="dialog"
           aria-modal="true"
           aria-labelledby="titulo-modal-conversion"
-          class="relative w-full max-w-md rounded-2xl border border-amber-400/40 bg-tezcat-card p-6 shadow-2xl"
+          class="relative max-h-[85vh] w-full max-w-md overflow-y-auto rounded-2xl border border-amber-400/40 bg-tezcat-card p-6 shadow-2xl"
         >
           <div class="flex items-start gap-3">
             <span
@@ -518,41 +419,28 @@
             </div>
           </div>
 
-          <div class="mt-4 rounded-xl border border-amber-400/30 bg-amber-400/10 p-3.5 text-xs leading-relaxed text-amber-200">
-            <p class="flex items-start gap-2">
-              <span class="material-symbols-outlined shrink-0 text-base">shuffle</span>
-              <span>
-                Al confirmar, el sistema asignará esta tarea a un <strong>miembro aleatorio</strong>
-                y pasará al flujo normal de trabajo (asignada → en proceso → revisión → terminada).
-                Esta acción no se puede deshacer.
-              </span>
-            </p>
-          </div>
-
-          <div class="mt-5 flex flex-col-reverse gap-2.5 sm:flex-row sm:justify-end">
-            <button
-              type="button"
-              onclick={cancelarConversion}
-              disabled={confirmandoConversion}
-              class="inline-flex items-center justify-center rounded-xl border border-tezcat-border px-4 py-2.5 text-xs font-semibold text-tezcat-textSecondary transition-colors hover:border-tezcat-borderHighlight hover:text-tezcat-textPrimary disabled:opacity-60"
-            >
-              Cancelar
-            </button>
-            <button
-              type="button"
-              onclick={confirmarConversion}
-              disabled={confirmandoConversion}
-              class="inline-flex items-center justify-center gap-2 rounded-xl border border-amber-400/50 bg-amber-400/20 px-5 py-2.5 text-xs font-bold tracking-wide text-amber-200 transition-colors hover:bg-amber-400/30 disabled:opacity-70"
-            >
-              {#if confirmandoConversion}
-                <span class="material-symbols-outlined animate-spin text-base">refresh</span>
-                <span>Convirtiendo…</span>
-              {:else}
-                <span class="material-symbols-outlined text-base">upgrade</span>
-                <span>Sí, convertir</span>
-              {/if}
-            </button>
-          </div>
+          <p class="my-4 whitespace-pre-wrap break-words text-sm text-tezcat-textSecondary">{conversionPendiente.descripcion || 'Sin descripción adicional.'}</p>
+          <form method="POST" action="?/convertir" use:enhance={() => {
+            confirmandoConversion = true;
+            return async ({ result, update }) => {
+              confirmandoConversion = false;
+              if (result.type === 'success') conversionPendiente = null;
+              await update();
+            };
+          }}>
+            <input type="hidden" name="tareaId" value={conversionPendiente.id} />
+            <label for="responsable-muro" class="block text-sm">Miembro responsable</label>
+            <select id="responsable-muro" name="responsableId" required class="mt-2 w-full rounded-xl border border-tezcat-border bg-tezcat-bg p-3 text-sm">
+              <option value="">Selecciona un miembro…</option>
+              {#each data.miembros as miembro (miembro.id)}<option value={miembro.id}>{miembro.nombre}</option>{/each}
+            </select>
+            {#if data.miembros.length === 0}<p class="mt-2 text-xs text-amber-300">No hay miembros activos en tu departamento.</p>{/if}
+            {#if form?.error}<p role="alert" class="mt-3 text-sm text-red-300">{form.error}</p>{/if}
+            <div class="mt-5 flex justify-end gap-3">
+              <button type="button" onclick={cancelarConversion} disabled={confirmandoConversion} class="rounded-xl border border-tezcat-border px-4 py-3 text-sm">Cancelar</button>
+              <button type="submit" disabled={confirmandoConversion || data.miembros.length === 0} class="rounded-xl bg-amber-300 px-4 py-3 text-sm font-bold text-slate-950 disabled:opacity-50">{confirmandoConversion ? 'Convirtiendo…' : 'Convertir y asignar'}</button>
+            </div>
+          </form>
         </div>
       </div>
     {/if}

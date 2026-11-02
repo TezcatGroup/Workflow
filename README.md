@@ -142,3 +142,15 @@ Para una demostración **solo en desarrollo local**, se puede definir `DEMO_ADMI
 - TW-03: loader de servidor con widgets y métricas filtradas por rol. El encargado ve solo el conteo de cuentas activas de su departamento.
 
 Las métricas de tareas y proyectos pertenecen a sprints posteriores, cuando existan esas tablas y reglas de autorización por recurso.
+
+## Etiquetas y muro de tareas opcionales
+
+La migración `0007_etiquetas_muro` crea el catálogo de etiquetas por departamento y su relación con las tareas. Se aplica con `pnpm db:migrate` o con el servicio `migrate` del despliegue Docker. Conserva los datos existentes.
+
+El administrador crea, edita y desactiva etiquetas persistentes. El encargado publica tareas opcionales sin responsable y selecciona etiquetas activas de su departamento. En `/muro`, los miembros del mismo departamento pueden leer la descripción completa y tomar una tarea; los encargados pueden convertirla en obligatoria eligiendo un miembro activo. Las tareas tomadas o convertidas salen del muro y aparecen en las tareas del responsable. La asignación y su evento se guardan en una transacción que impide asignaciones simultáneas.
+
+Para verificar estos flujos con una instancia local en ejecución, define `DATABASE_URL` y opcionalmente `TEST_BASE_URL` (por defecto `http://localhost:3001`) y ejecuta `pnpm test:muro`. La prueba crea cuentas y departamentos temporales y los elimina al terminar; cubre persistencia, permisos, aislamiento entre departamentos y concurrencia.
+
+Documentación detallada: [Cambios de etiquetas y muro](docs/cambios-etiquetas-muro.md).
+
+Las tareas opcionales permiten definir EXP y monedas. El detalle muestra sus etiquetas, recompensas e información adicional. Al aprobar la tarea se acreditan los importes una sola vez al responsable; el usuario consulta sus saldos en `/perfil`. Se reutilizan las tablas existentes de movimientos, sin otra migración para recompensas.

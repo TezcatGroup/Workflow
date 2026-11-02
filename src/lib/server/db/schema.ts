@@ -1,6 +1,6 @@
 import {
   boolean, index, integer, serial, jsonb, pgEnum, pgTable,
-  text, timestamp, uuid, varchar
+  text, timestamp, uuid, varchar, uniqueIndex
 } from 'drizzle-orm/pg-core';
 
 export const rolUsuario = pgEnum('rol_usuario', ['ADMIN', 'ENCARGADO', 'MIEMBRO']);
@@ -234,3 +234,16 @@ export const notificaciones = pgTable('notificaciones', {
   index('notificaciones_leida_idx').on(t.leida)
 ]);
 
+
+export const categoriaEtiqueta = pgEnum('categoria_etiqueta', ['LENGUAJE DE PROGRAMACIÓN', 'FRAMEWORK']);
+export const etiquetas = pgTable('etiquetas', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  nombre: varchar('nombre', { length: 60 }).notNull(),
+  categoria: categoriaEtiqueta('categoria').notNull(),
+  departamentoId: uuid('departamento_id').notNull().references(() => departamentos.id, { onDelete: 'cascade' }),
+  activo: boolean('activo').notNull().default(true)
+}, (t) => [uniqueIndex('etiquetas_departamento_nombre_idx').on(t.departamentoId, t.nombre)]);
+export const tareaEtiquetas = pgTable('tarea_etiquetas', {
+  tareaId: uuid('tarea_id').notNull().references(() => tareas.id, { onDelete: 'cascade' }),
+  etiquetaId: uuid('etiqueta_id').notNull().references(() => etiquetas.id, { onDelete: 'cascade' })
+}, (t) => [uniqueIndex('tarea_etiquetas_unica_idx').on(t.tareaId, t.etiquetaId)]);

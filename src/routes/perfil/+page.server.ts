@@ -1,8 +1,8 @@
 import { redirect } from '@sveltejs/kit';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import type { PageServerLoad } from './$types';
 import { db } from '$lib/server/db';
-import { departamentos } from '$lib/server/db/schema';
+import { departamentos, movimientosXp, movimientosPuntos } from '$lib/server/db/schema';
 
 export const load: PageServerLoad = async ({ locals }) => {
   const user = locals.user;
@@ -17,5 +17,9 @@ export const load: PageServerLoad = async ({ locals }) => {
     departamento = dep?.nombre ?? null;
   }
 
-  return { user, departamento };
+  const [[exp], [monedas]] = await Promise.all([
+    db.select({ total: sql<string>`coalesce(sum(${movimientosXp.cantidad}), 0)` }).from(movimientosXp).where(eq(movimientosXp.usuarioId, user.id)),
+    db.select({ total: sql<string>`coalesce(sum(${movimientosPuntos.cantidad}), 0)` }).from(movimientosPuntos).where(eq(movimientosPuntos.usuarioId, user.id))
+  ]);
+  return { user, departamento, exp: String(exp.total), monedas: String(monedas.total) };
 };

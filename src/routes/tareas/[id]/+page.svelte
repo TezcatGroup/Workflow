@@ -548,6 +548,14 @@
     <div class="grid gap-6 lg:grid-cols-3">
       <!-- Columna principal -->
       <div class="space-y-6 lg:col-span-2">
+        <Panel titulo="Información adicional">
+          <dl class="space-y-4 text-sm text-tezcat-textSecondary">
+            <div><dt class={etiqueta}>Departamento</dt><dd>{data.departamento?.nombre ?? 'Sin departamento'}</dd></div>
+            <div><dt class={etiqueta}>Requisitos</dt><dd class="whitespace-pre-wrap break-words">{data.tarea.requisitos || 'Sin requisitos adicionales'}</dd></div>
+            <div><dt class={etiqueta}>Impacto</dt><dd class="whitespace-pre-wrap break-words">{data.tarea.impacto || 'Sin especificar'}</dd></div>
+            <div><dt class={etiqueta}>Tiempo estimado</dt><dd>{data.tarea.estimadoMinutos !== null ? data.tarea.estimadoMinutos + ' minutos' : 'Sin especificar'}</dd></div>
+          </dl>
+        </Panel>
         <Panel titulo="Descripción">
           {#if data.tarea.descripcion}
             <p class="text-sm leading-relaxed whitespace-pre-line text-tezcat-textSecondary">{data.tarea.descripcion}</p>
@@ -977,6 +985,20 @@
 
       <!-- Columna lateral -->
       <div class="space-y-6">
+        <Panel titulo={data.tarea.tipo === 'OPCIONAL' ? 'Etiquetas y recompensas' : 'Etiquetas'}>
+          <div class="flex flex-wrap gap-2">
+            {#each data.etiquetas as et (et.id)}
+              <span class="rounded-full border border-tezcat-cyan/40 bg-tezcat-cyan/10 px-3 py-1 text-xs text-tezcat-cyan" title={et.categoria}>{et.nombre}{et.activo ? '' : ' (inactiva)'}</span>
+            {:else}<p class="text-sm text-tezcat-textSecondary">Sin etiquetas asignadas.</p>{/each}
+          </div>
+          {#if data.tarea.tipo === 'OPCIONAL'}
+          <dl class="mt-4 grid grid-cols-2 gap-3 text-sm">
+            <div><dt class={etiqueta}>Experiencia</dt><dd class="font-bold text-tezcat-cyan">{data.tarea.xpOfrecido ?? 0} EXP</dd></div>
+            <div><dt class={etiqueta}>Monedas</dt><dd class="font-bold text-amber-300">{data.tarea.puntosOfrecidos ?? 0} monedas</dd></div>
+          </dl>
+          <p class="mt-3 text-xs text-tezcat-textSecondary">Recompensa por completar la tarea y recibir la aprobación del revisor.</p>
+          {/if}
+        </Panel>
         <Panel titulo="Detalles">
           <dl class="space-y-4 text-sm">
             <div>

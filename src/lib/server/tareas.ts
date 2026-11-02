@@ -1,7 +1,8 @@
 import { error } from '@sveltejs/kit';
-import { and, asc, desc, eq, inArray, or } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, or, isNull } from 'drizzle-orm';
 import { db } from '$lib/server/db';
 import {
+  etiquetas, tareaEtiquetas, departamentos, movimientosXp, movimientosPuntos,
   estadoTarea,
   proyectos,
   tareaArchivos,
@@ -176,6 +177,14 @@ function validarDificultad(value: string): string {
   return v;
 }
 
+function validarRecompensa(value: string, nombre: string): number {
+  if (!value) return 0;
+  if (!/^\d+$/.test(value) || !Number.isSafeInteger(Number(value)) || Number(value) > 2147483647) {
+    error(400, nombre + ' debe ser un entero entre 0 y 2147483647');
+  }
+  return Number(value);
+}
+
 function validarCriterios(valores: FormDataEntryValue[]): string[] {
   const criterios = valores.map((v) => String(v).trim()).filter((v) => v.length > 0);
   if (criterios.length > MAX_CRITERIOS) error(400, `Máximo ${MAX_CRITERIOS} criterios por tarea`);
@@ -235,6 +244,7 @@ export async function opcionesParaCrear(actor: Encargado) {
       .orderBy(asc(proyectos.nombre))
   ]);
   return {
+    etiquetas: await db.select().from(etiquetas).where(and(eq(etiquetas.departamentoId, actor.departamentoId), eq(etiquetas.activo, true))).orderBy(asc(etiquetas.nombre)),
     responsables,
     revisores: responsables.filter((u) => u.rol === 'ENCARGADO'),
     proyectos: proyectosActivos,
@@ -246,10 +256,10 @@ export async function opcionesParaCrear(actor: Encargado) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Creación de tareas obligatorias (TW-04)                             */
+/* Creación de tareas obligatorias y opcionales                             */
 /* ------------------------------------------------------------------ */
 
-export async function crearTareaObligatoria(actor: Encargado, form: FormData) {
+export async function crearTarea(actor: Encargado, form: FormData) {
   const titulo = validarTitulo(campo(form, 'titulo'));
   const descripcion = validarDescripcion(campo(form, 'descripcion'));
   const fechaLimite = validarFechaLimite(campo(form, 'fechaLimite'));
@@ -257,9 +267,22 @@ export async function crearTareaObligatoria(actor: Encargado, form: FormData) {
   const dificultad = validarDificultad(campo(form, 'dificultad'));
   const criterios = validarCriterios(form.getAll('criterios'));
 
+  const tipo = campo(form, 'tipo') || 'OBLIGATORIA';
+  if (tipo !== 'OPCIONAL' && tipo !== 'OBLIGATORIA') error(400, 'Tipo de tarea inválido');
+  const xpOfrecido = tipo === 'OPCIONAL' ? validarRecompensa(campo(form, 'xpOfrecido'), 'La EXP') : null;
+  const puntosOfrecidos = tipo === 'OPCIONAL' ? validarRecompensa(campo(form, 'puntosOfrecidos'), 'Las monedas') : null;
   const responsableTxt = campo(form, 'responsableId');
-  if (!responsableTxt) error(400, 'El responsable es obligatorio');
-  const { id: responsableId } = await validarUsuarioDelDepartamento(responsableTxt, actor.departamentoId, 'El responsable');
+  let responsableId: string | null = null;
+  if (tipo === 'OBLIGATORIA') {
+    if (!responsableTxt) error(400, 'El responsable es obligatorio');
+    responsableId = (await validarUsuarioDelDepartamento(responsableTxt, actor.departamentoId, 'El responsable')).id;
+  }
+  const etiquetaIds = tipo === 'OPCIONAL' ? [...new Set(form.getAll('etiquetas').map(String))] : [];
+  if (etiquetaIds.some((id) => !esUuid(id))) error(400, 'Etiqueta inválida');
+  if (etiquetaIds.length) {
+    const validas = await db.select().from(etiquetas).where(and(inArray(etiquetas.id, etiquetaIds), eq(etiquetas.departamentoId, actor.departamentoId), eq(etiquetas.activo, true)));
+    if (validas.length !== etiquetaIds.length) error(400, 'Las etiquetas deben estar activas y pertenecer a tu departamento');
+  }
 
   const revisorTxt = campo(form, 'revisorId');
   let revisorId = actor.id;
@@ -274,7 +297,7 @@ export async function crearTareaObligatoria(actor: Encargado, form: FormData) {
     const [tarea] = await tx.insert(tareas).values({
       titulo,
       descripcion,
-      tipo: 'OBLIGATORIA',
+      tipo,
       estado: 'ASIGNADA',
       prioridad,
       dificultad,
@@ -284,10 +307,11 @@ export async function crearTareaObligatoria(actor: Encargado, form: FormData) {
       responsableId,
       revisorId,
       fechaLimite,
-      xpOfrecido: null,
-      puntosOfrecidos: null
+      xpOfrecido,
+      puntosOfrecidos
     }).returning({ id: tareas.id, numero: tareas.numero });
 
+    if (etiquetaIds.length) await tx.insert(tareaEtiquetas).values(etiquetaIds.map((etiquetaId) => ({ tareaId: tarea.id, etiquetaId })));
     if (criterios.length > 0) {
       await tx.insert(tareaCriterios).values(
         criterios.map((descripcionCriterio) => ({ tareaId: tarea.id, descripcion: descripcionCriterio }))
@@ -460,6 +484,12 @@ export async function cambiarEstado(
         observaciones
       });
     } else if (esAprobacionRevision) {
+      // El cambio condicional de estado permite acreditar una sola vez, incluso con aprobaciones simultáneas.
+      if (tarea.tipo === 'OPCIONAL' && tarea.responsableId) {
+        const recompensa = { usuarioId: tarea.responsableId, tareaId: tarea.id, motivo: 'Tarea aprobada: ' + tarea.titulo };
+        if ((tarea.xpOfrecido ?? 0) > 0) await tx.insert(movimientosXp).values({ ...recompensa, cantidad: tarea.xpOfrecido! });
+        if ((tarea.puntosOfrecidos ?? 0) > 0) await tx.insert(movimientosPuntos).values({ ...recompensa, cantidad: tarea.puntosOfrecidos! });
+      }
       await tx.insert(tareaRevisiones).values({
         tareaId: tarea.id,
         revisorId: actor.id,
@@ -738,6 +768,13 @@ export async function obtenerDetalle(actor: Actor, tareaId: string) {
       .orderBy(desc(tareaRevisiones.creadaEn))
   ]);
 
+  const [etiquetasAsignadas, departamento] = await Promise.all([
+    db.select({ id: etiquetas.id, nombre: etiquetas.nombre, categoria: etiquetas.categoria, activo: etiquetas.activo })
+      .from(tareaEtiquetas).innerJoin(etiquetas, eq(etiquetas.id, tareaEtiquetas.etiquetaId))
+      .where(eq(tareaEtiquetas.tareaId, tarea.id)).orderBy(asc(etiquetas.nombre)),
+    tarea.departamentoId ? db.select({ id: departamentos.id, nombre: departamentos.nombre }).from(departamentos)
+      .where(eq(departamentos.id, tarea.departamentoId)).limit(1) : Promise.resolve([])
+  ]);
   const persona = (id: string | null) => personas.find((p) => p.id === id) ?? null;
 
   const archivos = archivosBD.map((a) => ({
@@ -794,11 +831,18 @@ export async function obtenerDetalle(actor: Actor, tareaId: string) {
       estado: tarea.estado,
       prioridad: tarea.prioridad,
       dificultad: tarea.dificultad,
+      xpOfrecido: tarea.xpOfrecido,
+      puntosOfrecidos: tarea.puntosOfrecidos,
+      requisitos: tarea.requisitos,
+      impacto: tarea.impacto,
+      estimadoMinutos: tarea.estimadoMinutos,
       departamentoId: tarea.departamentoId,
       fechaLimite: tarea.fechaLimite,
       creadoEn: tarea.creadoEn,
       actualizadoEn: tarea.actualizadoEn
     },
+    etiquetas: etiquetasAsignadas,
+    departamento: departamento[0] ?? null,
     creador: persona(tarea.creadoPorId),
     responsable: persona(tarea.responsableId),
     revisor: persona(tarea.revisorId),
@@ -1268,4 +1312,23 @@ export async function eliminarTarea(actor: Actor, tareaId: string) {
   await db.delete(tareas).where(eq(tareas.id, tarea.id));
 
   return { id: tarea.id, eliminada: true };
+}
+/** La condición del UPDATE garantiza una sola asignación incluso con peticiones simultáneas. */
+export async function asignarDesdeMuro(actor: Actor, tareaId: string, responsableElegido?: string) {
+  const convertir = responsableElegido !== undefined;
+  if (convertir) exigirEncargado(actor);
+  else if (actor.rol !== 'MIEMBRO') error(403, 'Solo los miembros pueden tomar tareas');
+  if (!actor.departamentoId) error(403, 'Necesitas un departamento');
+  if (!esUuid(tareaId)) error(400, 'Tarea inválida');
+  const responsableId = convertir ? responsableElegido! : actor.id;
+  if (!esUuid(responsableId)) error(400, 'Selecciona un miembro responsable');
+  return db.transaction(async (tx) => {
+    const [miembro] = await tx.select().from(usuarios).where(and(eq(usuarios.id, responsableId), eq(usuarios.rol, 'MIEMBRO'), eq(usuarios.activo, true), eq(usuarios.departamentoId, actor.departamentoId!))).for('share');
+    if (!miembro) error(400, 'El responsable debe ser un miembro activo de tu departamento');
+    const [tarea] = await tx.update(tareas).set({ responsableId, ...(convertir ? { tipo: 'OBLIGATORIA' as const, xpOfrecido: null, puntosOfrecidos: null } : {}), actualizadoEn: new Date() })
+      .where(and(eq(tareas.id, tareaId), eq(tareas.departamentoId, actor.departamentoId!), eq(tareas.tipo, 'OPCIONAL'), eq(tareas.estado, 'ASIGNADA'), isNull(tareas.responsableId))).returning();
+    if (!tarea) error(409, 'La tarea ya no está disponible en el muro');
+    await tx.insert(tareaEventos).values({ tareaId, actorId: actor.id, tipo: convertir ? 'TAREA_CONVERTIDA' : 'TAREA_TOMADA', detalle: { responsableId } });
+    return tarea;
+  });
 }

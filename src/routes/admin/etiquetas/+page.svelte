@@ -29,10 +29,7 @@
   const campo =
     'block w-full rounded-xl border border-tezcat-border bg-tezcat-bg py-2.5 pr-3.5 pl-3.5 font-sans text-sm text-tezcat-textPrimary placeholder-tezcat-textMuted transition-colors focus:border-tezcat-cyan focus:ring-1 focus:ring-tezcat-cyan focus:outline-none [&>option]:bg-tezcat-card';
 
-  // Copia local: mientras la tabla de etiquetas no exista (pendiente del
-  // contrato del Sprint 7) la BD no guarda nada; reflejamos aquí lo que
-  // devuelven las acciones para que la pantalla se comporte como un CRUD real.
-  let etiquetas = $state<Etiqueta[]>([...data.etiquetas]);
+  const etiquetas = $derived(data.etiquetas);
   let creando = $state(false);
 
   const nombreDepartamento = (id: string) =>
@@ -82,12 +79,6 @@
       use:enhance={() => {
         creando = true;
         return async ({ result, update }) => {
-          if (result.type === 'success') {
-            const recibida = (result.data as { etiqueta?: Etiqueta } | undefined)?.etiqueta;
-            if (recibida && !etiquetas.some((e) => e.id === recibida.id)) {
-              etiquetas = [...etiquetas, recibida];
-            }
-          }
           creando = false;
           await update();
         };
@@ -159,17 +150,7 @@
             method="POST"
             action="?/actualizar"
             class="rounded-2xl border border-tezcat-border/80 bg-tezcat-card/90 p-4 shadow-xl backdrop-blur-md"
-            use:enhance={() => {
-              return async ({ result, update }) => {
-                if (result.type === 'success') {
-                  const recibida = (result.data as { etiqueta?: Etiqueta } | undefined)?.etiqueta;
-                  if (recibida) {
-                    etiquetas = etiquetas.map((e) => (e.id === recibida.id ? recibida : e));
-                  }
-                }
-                await update();
-              };
-            }}
+            use:enhance
           >
             <input type="hidden" name="id" value={et.id} />
             <input type="hidden" name="departamentoId" value={et.departamentoId} />

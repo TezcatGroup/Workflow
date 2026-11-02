@@ -50,6 +50,13 @@
       "when": 1793052236619,
       "tag": "0006_verificado_encargado",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793602037351,
+      "tag": "0007_etiquetas_muro",
+      "breakpoints": true
     }
   ]
 }

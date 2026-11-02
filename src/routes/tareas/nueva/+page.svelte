@@ -14,31 +14,14 @@
   const v = $derived(form?.valores);
 
   // TW-13: tipo de tarea — OBLIGATORIA se asigna a un miembro, OPCIONAL se publica en el Muro.
-  // Se restaura desde form.valores cuando el backend incluya el campo "tipo" (por ahora no lo trae).
   const tipoInicial = untrack(() => (form?.valores as { tipo?: string } | undefined)?.tipo);
   let tipo = $state<'OBLIGATORIA' | 'OPCIONAL'>(
     tipoInicial === 'OPCIONAL' ? 'OPCIONAL' : 'OBLIGATORIA'
   );
   const esOpcional = $derived(tipo === 'OPCIONAL');
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // TW-14: etiquetas del Muro para tareas opcionales.
-  // TODO (contrato Sprint 7): reemplazar esta lista de ejemplo por las
-  // etiquetas reales del departamento del encargado cuando el backend las
-  // exponga en opcionesParaCrear (el ADMIN las crea en /admin/etiquetas).
-  // ─────────────────────────────────────────────────────────────────────────
   type Categoria = 'LENGUAJE DE PROGRAMACIÓN' | 'FRAMEWORK';
-  type EtiquetaMuro = { nombre: string; categoria: Categoria };
-
-  const etiquetasMuro: EtiquetaMuro[] = [
-    { nombre: 'TypeScript', categoria: 'LENGUAJE DE PROGRAMACIÓN' },
-    { nombre: 'JavaScript', categoria: 'LENGUAJE DE PROGRAMACIÓN' },
-    { nombre: 'Python', categoria: 'LENGUAJE DE PROGRAMACIÓN' },
-    { nombre: 'SQL', categoria: 'LENGUAJE DE PROGRAMACIÓN' },
-    { nombre: 'Svelte', categoria: 'FRAMEWORK' },
-    { nombre: 'React', categoria: 'FRAMEWORK' },
-    { nombre: 'Tailwind CSS', categoria: 'FRAMEWORK' }
-  ];
+  const etiquetasMuro = $derived(data.etiquetas);
 
   // La "imagen" de cada etiqueta es un emoji por categoría (decisión del equipo).
   const emojiPorCategoria: Record<Categoria, string> = {
@@ -50,7 +33,6 @@
     FRAMEWORK: 'border-purple-400/40 bg-purple-400/10 text-purple-300'
   };
 
-  // Se restaura desde form.valores cuando el backend incluya "etiquetas" (igual que tipo).
   let etiquetasSeleccionadas = $state<string[]>(
     untrack(
       () => (form?.valores as { etiquetas?: string[] } | undefined)?.etiquetas ?? []
@@ -262,10 +244,10 @@
             </p>
             <div class="flex flex-wrap gap-2">
               {#each etiquetasMuro as et (et.nombre)}
-                {@const marcada = etiquetasSeleccionadas.includes(et.nombre)}
+                {@const marcada = etiquetasSeleccionadas.includes(et.id)}
                 <button
                   type="button"
-                  onclick={() => alternarEtiqueta(et.nombre)}
+                  onclick={() => alternarEtiqueta(et.id)}
                   aria-pressed={marcada}
                   class="inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 font-mono text-[11px] font-semibold transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-tezcat-cyan/60
                     {marcada
@@ -282,13 +264,30 @@
             </div>
             {#if etiquetasSeleccionadas.length === 0}
               <p class="mt-2 font-mono text-[10px] text-tezcat-textMuted">
-                Opcional: puedes publicarla sin etiquetas y asignarlas después.
+                Opcional: puedes publicarla sin etiquetas.
               </p>
             {/if}
             <!-- Solo las seleccionadas viajan con el formulario (contrato Sprint 7) -->
             {#each etiquetasSeleccionadas as nombre (nombre)}
               <input type="hidden" name="etiquetas" value={nombre} />
             {/each}
+          </fieldset>
+        {/if}
+
+        {#if esOpcional}
+          <fieldset>
+            <legend class={etiqueta}>Recompensa al completar la tarea</legend>
+            <p class="mb-3 text-xs text-tezcat-textSecondary">Se entrega al responsable cuando el revisor apruebe la tarea. Usa 0 si no ofrece recompensa.</p>
+            <div class="grid gap-5 sm:grid-cols-2">
+              <div>
+                <label class={etiqueta} for="xpOfrecido">Experiencia (EXP)</label>
+                <input id="xpOfrecido" name="xpOfrecido" type="number" min="0" max="2147483647" step="1" required value={v?.xpOfrecido ?? '0'} class={campo} />
+              </div>
+              <div>
+                <label class={etiqueta} for="puntosOfrecidos">Monedas</label>
+                <input id="puntosOfrecidos" name="puntosOfrecidos" type="number" min="0" max="2147483647" step="1" required value={v?.puntosOfrecidos ?? '0'} class={campo} />
+              </div>
+            </div>
           </fieldset>
         {/if}
 

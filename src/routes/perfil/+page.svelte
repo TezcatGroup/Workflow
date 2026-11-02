@@ -11,5 +11,7 @@
     <div><dt class="font-semibold">Nombre</dt><dd>{data.user.nombre}</dd></div>
     <div><dt class="font-semibold">Rol</dt><dd>{data.user.rol}</dd></div>
     <div><dt class="font-semibold">Departamento</dt><dd>{data.departamento ?? 'Sin asignar'}</dd></div>
+    <div><dt class="font-semibold">Experiencia acumulada</dt><dd>{data.exp} EXP</dd></div>
+    <div><dt class="font-semibold">Saldo de monedas</dt><dd>{data.monedas} monedas</dd></div>
   </dl>
 </main>

@@ -1,7 +1,7 @@
 import { fail, isHttpError, redirect, type Actions } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 import {
-  crearTareaObligatoria,
+  crearTarea,
   exigirEncargado,
   MAX_ADJUNTO_BYTES,
   opcionesParaCrear,
@@ -16,6 +16,10 @@ export const load: PageServerLoad = async ({ locals }) => {
 function valoresDelFormulario(form: FormData) {
   const texto = (nombre: string) => String(form.get(nombre) ?? '');
   return {
+    tipo: texto('tipo'),
+    xpOfrecido: texto('xpOfrecido'),
+    puntosOfrecidos: texto('puntosOfrecidos'),
+    etiquetas: form.getAll('etiquetas').map(String),
     titulo: texto('titulo'),
     descripcion: texto('descripcion'),
     responsableId: texto('responsableId'),
@@ -48,7 +52,7 @@ export const actions: Actions = {
 
     let tareaId: string;
     try {
-      tareaId = (await crearTareaObligatoria(encargado, form)).id;
+      tareaId = (await crearTarea(encargado, form)).id;
 
       for (const archivo of archivosSubidos) {
         await registrarArchivo(encargado, tareaId, archivo);
@@ -58,6 +62,6 @@ export const actions: Actions = {
       throw e;
     }
 
-    redirect(303, `/tareas/${tareaId}`);
+    redirect(303, form.get('tipo') === 'OPCIONAL' ? '/muro' : `/tareas/${tareaId}`);
   }
 };
