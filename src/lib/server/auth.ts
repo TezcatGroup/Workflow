@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { dev } from '$app/environment';
+import { env } from '$env/dynamic/private';
 import { and, eq, gt, sql } from 'drizzle-orm';
 import type { Cookies } from '@sveltejs/kit';
 import { db } from '$lib/server/db';
@@ -18,7 +19,7 @@ export async function crearSesion(usuarioId: string, cookies: Cookies): Promise<
     expiraEn: new Date(Date.now() + TTL_SECONDS * 1000)
   });
   cookies.set(COOKIE_NAME, token, {
-    path: '/', httpOnly: true, secure: !dev, sameSite: 'lax', maxAge: TTL_SECONDS
+    path: '/', httpOnly: true, secure: !dev && env.WORKFLOW_LOCAL_HTTP !== 'true', sameSite: 'lax', maxAge: TTL_SECONDS
   });
 }
 

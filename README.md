@@ -1,5 +1,28 @@
 # Tezcat Workflow
 
+## Versión universitaria: todo en un único contenedor
+
+Construir una vez desde la raíz del repositorio:
+
+```bash
+docker build -f docker/universidad/Dockerfile -t workflow:universidad .
+```
+
+Levantar frontend, backend y PostgreSQL con **un solo comando**, sin Compose ni `.env`:
+
+```bash
+docker run -d --name workflow-universidad -p 3000:3000 workflow:universidad
+```
+
+Abrir [http://localhost:3000](http://localhost:3000) e iniciar sesión con
+`admin@universidad.local` / `WorkflowUniversidad123!` (solo demostración).
+Las migraciones y el administrador se inicializan automáticamente. Los datos
+se conservan al detener e iniciar el mismo contenedor, pero se pierden al eliminarlo.
+
+Consultar [la guía universitaria](docker/universidad/README.md) para configuración,
+logs, reinicios, pruebas sin Internet y demostración para el profesor.
+El despliegue original con Compose sigue disponible a continuación.
+
 ## Despliegue Docker en un solo comando
 
 Para construir la aplicación, iniciar PostgreSQL, aplicar automáticamente todas las migraciones Drizzle, crear o actualizar el administrador inicial y levantar la aplicación, ejecuta desde la raíz del repositorio:
