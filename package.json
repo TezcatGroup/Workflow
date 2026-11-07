@@ -14,7 +14,8 @@
     "db:studio": "drizzle-kit studio",
     "db:bootstrap": "tsx scripts/bootstrap-admin.ts",
     "db:demo-admin": "tsx scripts/create-local-demo-admin.ts",
-    "test:muro": "tsx scripts/verify-muro.ts"
+    "test:muro": "tsx scripts/verify-muro.ts",
+    "test:gamificacion": "tsx scripts/verify-gamificacion.ts"
   },
   "dependencies": {
     "argon2": "^0.44.0",

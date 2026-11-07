@@ -20,36 +20,49 @@ export const load: PageServerLoad = async ({ locals }) => {
   // El administrador gestiona el catálogo desde /admin/recompensas
   if (user.rol === 'ADMIN') redirect(303, '/admin/recompensas');
 
-  const [[monedas], [exp], listaRecompensas, historialCanjes] = await Promise.all([
-    db
-      .select({ total: sql<number>`coalesce(sum(${movimientosPuntos.cantidad}), 0)::int` })
-      .from(movimientosPuntos)
-      .where(eq(movimientosPuntos.usuarioId, user.id)),
-    db
-      .select({ total: sql<number>`coalesce(sum(${movimientosXp.cantidad}), 0)::int` })
-      .from(movimientosXp)
-      .where(eq(movimientosXp.usuarioId, user.id)),
-    db
-      .select()
-      .from(recompensas)
-      .where(eq(recompensas.activo, true))
-      .orderBy(asc(recompensas.costoPuntos), asc(recompensas.nombre)),
-    db
-      .select({
-        id: canjes.id,
-        recompensaId: canjes.recompensaId,
-        recompensaNombre: recompensas.nombre,
-        puntosGastados: canjes.puntosGastados,
-        estado: canjes.estado,
-        creadoEn: canjes.creadoEn,
-        entregadoEn: canjes.entregadoEn
-      })
-      .from(canjes)
-      .leftJoin(recompensas, eq(canjes.recompensaId, recompensas.id))
-      .where(eq(canjes.usuarioId, user.id))
-      .orderBy(desc(canjes.creadoEn))
-      .limit(30)
-  ]);
+  const [[monedas], [exp], listaRecompensas, historialCanjes, movimientosMonedas] =
+    await Promise.all([
+      db
+        .select({ total: sql<number>`coalesce(sum(${movimientosPuntos.cantidad}), 0)::int` })
+        .from(movimientosPuntos)
+        .where(eq(movimientosPuntos.usuarioId, user.id)),
+      db
+        .select({ total: sql<number>`coalesce(sum(${movimientosXp.cantidad}), 0)::int` })
+        .from(movimientosXp)
+        .where(eq(movimientosXp.usuarioId, user.id)),
+      db
+        .select()
+        .from(recompensas)
+        .where(eq(recompensas.activo, true))
+        .orderBy(asc(recompensas.costoPuntos), asc(recompensas.nombre)),
+      db
+        .select({
+          id: canjes.id,
+          recompensaId: canjes.recompensaId,
+          recompensaNombre: recompensas.nombre,
+          puntosGastados: canjes.puntosGastados,
+          estado: canjes.estado,
+          creadoEn: canjes.creadoEn,
+          entregadoEn: canjes.entregadoEn
+        })
+        .from(canjes)
+        .leftJoin(recompensas, eq(canjes.recompensaId, recompensas.id))
+        .where(eq(canjes.usuarioId, user.id))
+        .orderBy(desc(canjes.creadoEn))
+        .limit(30),
+      db
+        .select({
+          id: movimientosPuntos.id,
+          tareaId: movimientosPuntos.tareaId,
+          cantidad: movimientosPuntos.cantidad,
+          motivo: movimientosPuntos.motivo,
+          creadoEn: movimientosPuntos.creadoEn
+        })
+        .from(movimientosPuntos)
+        .where(eq(movimientosPuntos.usuarioId, user.id))
+        .orderBy(desc(movimientosPuntos.creadoEn))
+        .limit(30)
+    ]);
 
   const saldo = monedas?.total ?? 0;
   const expTotal = Math.max(0, exp?.total ?? 0);
@@ -66,11 +79,13 @@ export const load: PageServerLoad = async ({ locals }) => {
     nivel,
     recompensas: listaRecompensas,
     canjes: historialCanjes,
+    movimientos: movimientosMonedas,
     totalCanjeadoHistorico
   };
 };
 
 export const actions: Actions = {
+  // TW-17 y TW-22: Canje transaccional con verificación de stock/saldo, registro permanente y descuento único
   canjear: async ({ locals, request }) => {
     const user = locals.user;
     if (!user) redirect(303, '/login');
@@ -123,15 +138,18 @@ export const actions: Actions = {
             .where(eq(recompensas.id, rec.id));
         }
 
-        // 4. Registrar el canje en estado PENDIENTE para que el Admin lo gestione en /admin/recompensas
-        await tx.insert(canjes).values({
-          usuarioId: user.id,
-          recompensaId: rec.id,
-          puntosGastados: rec.costoPuntos,
-          estado: 'PENDIENTE'
-        });
+        // 4. Registrar el canje permanente en estado PENDIENTE para gestión en /admin/recompensas
+        const [nuevoCanje] = await tx
+          .insert(canjes)
+          .values({
+            usuarioId: user.id,
+            recompensaId: rec.id,
+            puntosGastados: rec.costoPuntos,
+            estado: 'PENDIENTE'
+          })
+          .returning({ id: canjes.id });
 
-        // 5. Descontar las monedas del saldo general del usuario
+        // 5. Descontar una sola vez las monedas del saldo general del usuario
         await tx.insert(movimientosPuntos).values({
           usuarioId: user.id,
           tareaId: null,
@@ -139,11 +157,16 @@ export const actions: Actions = {
           motivo: `Canje en tienda: ${rec.nombre}`
         });
 
-        return { nombre: rec.nombre, costo: rec.costoPuntos };
+        return {
+          folio: nuevoCanje.id.slice(0, 8).toUpperCase(),
+          nombre: rec.nombre,
+          costo: rec.costoPuntos,
+          saldoRestante: saldoActual - rec.costoPuntos
+        };
       });
 
       return {
-        ok: `Solicitud tramitada: "${resultado.nombre}" por ${resultado.costo} monedas. Pendiente de entrega.`
+        ok: `¡Canje confirmado (#${resultado.folio})! Solicitaste "${resultado.nombre}" por ${resultado.costo} monedas. Saldo restante: ${resultado.saldoRestante} monedas.`
       };
     } catch (e) {
       const mensaje = e instanceof Error ? e.message : 'Error al procesar el canje.';

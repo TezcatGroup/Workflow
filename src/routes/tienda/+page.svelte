@@ -8,6 +8,7 @@
   type Recompensa = (typeof data.recompensas)[number];
   type ClaveCategoria = 'TODAS' | 'TIEMPO' | 'COMPRAS' | 'CURSOS' | 'MERCH' | 'VIP';
   type CriterioOrden = 'MENOR_PRECIO' | 'MAYOR_PRECIO' | 'RELEVANCIA' | 'DISPONIBLES';
+  type TabBitacora = 'CANJES' | 'MOVIMIENTOS';
 
   const categorias: { id: ClaveCategoria; etiqueta: string }[] = [
     { id: 'TODAS', etiqueta: 'Todas las Recompensas' },
@@ -47,6 +48,8 @@
   // Estados reactivos (Svelte 5 Runes)
   let categoriaActiva = $state<ClaveCategoria>('TODAS');
   let ordenActivo = $state<CriterioOrden>('RELEVANCIA');
+  let busqueda = $state('');
+  let tabBitacora = $state<TabBitacora>('CANJES');
   let recompensaPorConfirmar = $state<Recompensa | null>(null);
   let procesandoCompra = $state(false);
   let seccionHistorialRef = $state<HTMLElement | null>(null);
@@ -58,9 +61,14 @@
   );
 
   const recompensasFiltradas = $derived.by(() => {
+    const q = busqueda.trim().toLowerCase();
     const filtradas = data.recompensas.filter((r) => {
-      if (categoriaActiva === 'TODAS') return true;
-      return detectarCategoria(r) === categoriaActiva;
+      if (categoriaActiva !== 'TODAS' && detectarCategoria(r) !== categoriaActiva) return false;
+      if (!q) return true;
+      return (
+        r.nombre.toLowerCase().includes(q) ||
+        (r.descripcion ?? '').toLowerCase().includes(q)
+      );
     });
 
     return [...filtradas].sort((a, b) => {
@@ -112,7 +120,7 @@
   <EncabezadoApp user={data.user} />
 
   <main class="mx-auto max-w-7xl px-4 py-8 sm:py-10">
-    <!-- Avisos de operación (Compra realizada o error) -->
+    <!-- Avisos de operación (Confirmación de canje o motivo de rechazo - TW-22) -->
     {#if form?.error}
       <div
         role="alert"
@@ -135,7 +143,7 @@
       </div>
     {/if}
 
-    <!-- Encabezado Principal: Billetera y Telemetría (Estilo Mockup adaptado a Tezcat) -->
+    <!-- Encabezado Principal: Billetera y Telemetría (TW-17 · TW-22) -->
     <section class="relative mb-8 overflow-hidden rounded-2xl border border-tezcat-border/80 bg-tezcat-card/90 p-6 shadow-2xl backdrop-blur-md sm:p-8">
       <div class="pointer-events-none absolute -top-20 -right-20 size-80 rounded-full bg-amber-400/5 blur-3xl"></div>
       <div class="pointer-events-none absolute -bottom-20 -left-20 size-80 rounded-full bg-tezcat-cyan/5 blur-3xl"></div>
@@ -144,7 +152,7 @@
         <div class="space-y-1.5">
           <div class="flex flex-wrap items-center gap-2">
             <span class="rounded bg-tezcat-surfaceAlt px-2.5 py-0.5 font-mono text-[10px] font-semibold tracking-wider text-tezcat-cyan uppercase">
-              TW-17 · Módulo de Beneficios
+              TW-17 · TW-22 · Módulo de Beneficios
             </span>
             <span class="font-mono text-[10px] text-tezcat-textMuted">•</span>
             <span class="font-mono text-[10px] tracking-widest text-tezcat-textSecondary uppercase">
@@ -199,7 +207,7 @@
       </div>
     </section>
 
-    <!-- Barra de Categorías y Ordenamiento -->
+    <!-- Barra de Categorías, Buscador y Ordenamiento -->
     <div class="mb-6 flex flex-wrap items-center justify-between gap-4">
       <div class="flex items-center gap-1.5 overflow-x-auto pb-1">
         {#each categorias as cat (cat.id)}
@@ -220,7 +228,20 @@
         {/each}
       </div>
 
-      <div class="flex items-center gap-2">
+      <div class="flex flex-wrap items-center gap-2">
+        <div class="relative">
+          <span class="material-symbols-outlined pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-sm text-tezcat-textMuted">
+            search
+          </span>
+          <input
+            type="search"
+            bind:value={busqueda}
+            placeholder="Buscar recompensa..."
+            aria-label="Buscar recompensa"
+            class="w-48 rounded-xl border border-tezcat-border bg-tezcat-card py-2 pr-3 pl-8 text-xs text-tezcat-textPrimary placeholder-tezcat-textMuted focus:border-tezcat-cyan focus:outline-none sm:w-56"
+          />
+        </div>
+
         <label for="orden-tienda" class="hidden font-mono text-[10px] text-tezcat-textMuted uppercase sm:inline">
           Ordenar:
         </label>
@@ -249,10 +270,13 @@
     {:else if recompensasFiltradas.length === 0}
       <div class="mb-10 rounded-2xl border border-dashed border-tezcat-border bg-tezcat-card/40 p-10 text-center">
         <span class="material-symbols-outlined text-3xl text-tezcat-textMuted">filter_alt_off</span>
-        <p class="mt-2 text-sm font-bold text-white">No hay recompensas en esta categoría</p>
+        <p class="mt-2 text-sm font-bold text-white">No se encontraron recompensas con este filtro</p>
         <button
           type="button"
-          onclick={() => (categoriaActiva = 'TODAS')}
+          onclick={() => {
+            categoriaActiva = 'TODAS';
+            busqueda = '';
+          }}
           class="mt-3 rounded-xl border border-tezcat-cyan/50 bg-tezcat-cyan/10 px-4 py-2 text-xs font-bold text-tezcat-cyan hover:bg-tezcat-cyan/20"
         >
           Ver todas las recompensas
@@ -403,7 +427,7 @@
       </div>
     {/if}
 
-    <!-- Sección Inferior: Protocolo Logístico y Registro de Últimos Canjes -->
+    <!-- Sección Inferior: Protocolo Logístico y Bitácora de Canjes / Movimientos (TW-17 · TW-22) -->
     <div bind:this={seccionHistorialRef} class="grid grid-cols-1 gap-6 lg:grid-cols-12">
       <!-- Protocolo de Asignación y Logística (5 Columnas) -->
       <div class="flex flex-col justify-between rounded-2xl border border-tezcat-border/80 bg-tezcat-card/90 p-6 shadow-xl backdrop-blur-md lg:col-span-5">
@@ -413,7 +437,7 @@
             <h2 class="text-base font-bold text-white">Protocolo de Asignación y Logística</h2>
           </div>
           <p class="mb-4 text-xs leading-relaxed text-tezcat-textSecondary">
-            Todo canje descuenta automáticamente las monedas de tu saldo y genera una orden verificable en la consola de administración.
+            Todo canje descuenta una sola vez las monedas de tu saldo y genera un registro permanente verificable en la consola de administración.
           </p>
 
           <div class="space-y-3">
@@ -440,7 +464,7 @@
         </div>
 
         <div class="mt-6 flex items-center justify-between border-t border-tezcat-border/60 pt-3 font-mono text-[10px] text-tezcat-textMuted">
-          <span>TEZCAT-STORE · TW-17</span>
+          <span>TEZCAT-STORE · TW-17 · TW-22</span>
           <a href="/muro" class="inline-flex items-center gap-1 font-semibold text-tezcat-cyan hover:underline">
             <span>Ganar más monedas en el Muro</span>
             <span class="material-symbols-outlined text-xs">north_east</span>
@@ -448,70 +472,119 @@
         </div>
       </div>
 
-      <!-- Tus Últimos Canjes (7 Columnas) -->
+      <!-- Tus Últimos Canjes y Libro Mayor de Puntos (7 Columnas) -->
       <div class="flex flex-col justify-between rounded-2xl border border-tezcat-border/80 bg-tezcat-card/90 p-6 shadow-xl backdrop-blur-md lg:col-span-7">
         <div>
           <div class="mb-4 flex flex-wrap items-center justify-between gap-2">
-            <div class="flex items-center gap-2">
-              <span class="material-symbols-outlined text-xl text-amber-300">receipt_long</span>
-              <h2 class="text-base font-bold text-white">Tus Últimos Canjes</h2>
+            <div class="flex items-center gap-1.5">
+              <button
+                type="button"
+                onclick={() => (tabBitacora = 'CANJES')}
+                class="rounded-xl border px-3 py-1.5 font-mono text-[11px] font-semibold transition-all
+                  {tabBitacora === 'CANJES'
+                    ? 'border-amber-400/50 bg-amber-400/15 text-amber-300'
+                    : 'border-tezcat-border bg-tezcat-bg text-tezcat-textSecondary hover:text-white'}"
+              >
+                Tus Últimos Canjes ({data.canjes.length})
+              </button>
+              <button
+                type="button"
+                onclick={() => (tabBitacora = 'MOVIMIENTOS')}
+                class="rounded-xl border px-3 py-1.5 font-mono text-[11px] font-semibold transition-all
+                  {tabBitacora === 'MOVIMIENTOS'
+                    ? 'border-tezcat-cyan/50 bg-tezcat-cyan/15 text-tezcat-cyan'
+                    : 'border-tezcat-border bg-tezcat-bg text-tezcat-textSecondary hover:text-white'}"
+              >
+                Libro Mayor de Puntos ({data.movimientos.length})
+              </button>
             </div>
-            <span class="font-mono text-[10px] text-tezcat-textMuted uppercase">
-              Mostrando {data.canjes.length} {data.canjes.length === 1 ? 'operación' : 'operaciones'}
-            </span>
           </div>
 
-          {#if data.canjes.length === 0}
-            <div class="rounded-xl border border-dashed border-tezcat-border bg-tezcat-bg/50 p-8 text-center">
-              <span class="material-symbols-outlined text-3xl text-tezcat-textMuted">redeem</span>
-              <p class="mt-2 text-xs font-semibold text-white">Aún no has realizado ningún canje</p>
-              <p class="mt-1 text-[11px] text-tezcat-textSecondary">
-                Tus compras de recompensas y su estado de entrega aparecerán listados aquí.
-              </p>
-            </div>
+          {#if tabBitacora === 'CANJES'}
+            {#if data.canjes.length === 0}
+              <div class="rounded-xl border border-dashed border-tezcat-border bg-tezcat-bg/50 p-8 text-center">
+                <span class="material-symbols-outlined text-3xl text-tezcat-textMuted">redeem</span>
+                <p class="mt-2 text-xs font-semibold text-white">Aún no has realizado ningún canje</p>
+                <p class="mt-1 text-[11px] text-tezcat-textSecondary">
+                  Tus compras de recompensas y su estado de entrega aparecerán listados aquí.
+                </p>
+              </div>
+            {:else}
+              <div class="max-h-80 space-y-2.5 overflow-y-auto pr-1">
+                {#each data.canjes as c (c.id)}
+                  <div class="flex flex-col justify-between gap-3 rounded-xl border border-tezcat-border bg-tezcat-bg p-3.5 transition-colors hover:border-tezcat-borderHighlight sm:flex-row sm:items-center">
+                    <div class="flex items-center gap-3">
+                      <div class="flex size-9 shrink-0 items-center justify-center rounded-lg bg-tezcat-surfaceAlt text-tezcat-cyan">
+                        <span class="material-symbols-outlined text-base">redeem</span>
+                      </div>
+                      <div class="min-w-0">
+                        <p class="truncate text-xs font-bold text-white">
+                          {c.recompensaNombre ?? 'Recompensa del catálogo'}
+                        </p>
+                        <p class="mt-0.5 font-mono text-[10px] text-tezcat-textSecondary">
+                          Folio #{c.id.slice(0, 8).toUpperCase()} · Solicitado el {fechaCorta(c.creadoEn)}
+                          {#if c.entregadoEn}
+                            · Entregado el {fechaCorta(c.entregadoEn)}
+                          {/if}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div class="flex items-center justify-between gap-3 sm:justify-end">
+                      <span class="font-mono text-xs font-bold text-amber-300">
+                        {c.estado === 'CANCELADO' ? 'Reembolsado' : `-${formatearPuntos(c.puntosGastados)} PTS`}
+                      </span>
+
+                      {#if c.estado === 'PENDIENTE'}
+                        <span class="rounded border border-amber-400/30 bg-amber-400/15 px-2 py-0.5 font-mono text-[10px] font-bold text-amber-300 uppercase">
+                          Pendiente
+                        </span>
+                      {:else if c.estado === 'ENTREGADO'}
+                        <span class="rounded border border-emerald-400/30 bg-emerald-400/15 px-2 py-0.5 font-mono text-[10px] font-bold text-emerald-300 uppercase">
+                          Entregado
+                        </span>
+                      {:else}
+                        <span class="rounded border border-red-400/30 bg-red-400/15 px-2 py-0.5 font-mono text-[10px] font-bold text-red-300 uppercase">
+                          Cancelado
+                        </span>
+                      {/if}
+                    </div>
+                  </div>
+                {/each}
+              </div>
+            {/if}
           {:else}
-            <div class="space-y-2.5 max-h-80 overflow-y-auto pr-1">
-              {#each data.canjes as c (c.id)}
-                <div class="flex flex-col justify-between gap-3 rounded-xl border border-tezcat-border bg-tezcat-bg p-3.5 transition-colors hover:border-tezcat-borderHighlight sm:flex-row sm:items-center">
-                  <div class="flex items-center gap-3">
-                    <div class="flex size-9 shrink-0 items-center justify-center rounded-lg bg-tezcat-surfaceAlt text-tezcat-cyan">
-                      <span class="material-symbols-outlined text-base">redeem</span>
-                    </div>
+            {#if data.movimientos.length === 0}
+              <div class="rounded-xl border border-dashed border-tezcat-border bg-tezcat-bg/50 p-8 text-center">
+                <span class="material-symbols-outlined text-3xl text-tezcat-textMuted">account_balance_wallet</span>
+                <p class="mt-2 text-xs font-semibold text-white">Sin movimientos de puntos todavía</p>
+                <p class="mt-1 text-[11px] text-tezcat-textSecondary">
+                  Aquí verás cada abono por tareas opcionales y cada descuento único por canje.
+                </p>
+              </div>
+            {:else}
+              <div class="max-h-80 space-y-2.5 overflow-y-auto pr-1">
+                {#each data.movimientos as mov (mov.id)}
+                  {@const esAbono = mov.cantidad >= 0}
+                  <div class="flex items-center justify-between gap-3 rounded-xl border border-tezcat-border bg-tezcat-bg p-3.5 text-xs">
                     <div class="min-w-0">
-                      <p class="truncate text-xs font-bold text-white">
-                        {c.recompensaNombre ?? 'Recompensa del catálogo'}
-                      </p>
-                      <p class="mt-0.5 font-mono text-[10px] text-tezcat-textSecondary">
-                        Solicitado el {fechaCorta(c.creadoEn)}
-                        {#if c.entregadoEn}
-                          · Entregado el {fechaCorta(c.entregadoEn)}
-                        {/if}
+                      <p class="truncate font-semibold text-white">{mov.motivo}</p>
+                      <p class="mt-0.5 font-mono text-[10px] text-tezcat-textMuted">
+                        {fechaCorta(mov.creadoEn)}
                       </p>
                     </div>
-                  </div>
-
-                  <div class="flex items-center justify-between gap-3 sm:justify-end">
-                    <span class="font-mono text-xs font-bold text-amber-300">
-                      {c.estado === 'CANCELADO' ? 'Reembolsado' : `-${formatearPuntos(c.puntosGastados)} PTS`}
+                    <span
+                      class="shrink-0 rounded-lg border px-2.5 py-1 font-mono text-xs font-bold
+                        {esAbono
+                          ? 'border-emerald-400/40 bg-emerald-400/10 text-emerald-300'
+                          : 'border-amber-400/40 bg-amber-400/10 text-amber-300'}"
+                    >
+                      {esAbono ? `+${formatearPuntos(mov.cantidad)}` : formatearPuntos(mov.cantidad)} PTS
                     </span>
-
-                    {#if c.estado === 'PENDIENTE'}
-                      <span class="rounded border border-amber-400/30 bg-amber-400/15 px-2 py-0.5 font-mono text-[10px] font-bold text-amber-300 uppercase">
-                        Pendiente
-                      </span>
-                    {:else if c.estado === 'ENTREGADO'}
-                      <span class="rounded border border-emerald-400/30 bg-emerald-400/15 px-2 py-0.5 font-mono text-[10px] font-bold text-emerald-300 uppercase">
-                        Entregado
-                      </span>
-                    {:else}
-                      <span class="rounded border border-red-400/30 bg-red-400/15 px-2 py-0.5 font-mono text-[10px] font-bold text-red-300 uppercase">
-                        Cancelado
-                      </span>
-                    {/if}
                   </div>
-                </div>
-              {/each}
-            </div>
+                {/each}
+              </div>
+            {/if}
           {/if}
         </div>
 
@@ -525,7 +598,7 @@
     </div>
 
     <!-- =============================================================== -->
-    <!-- MODAL EMERGENTE DE CONFIRMACIÓN DE COMPRA (TW-17)               -->
+    <!-- MODAL EMERGENTE DE CONFIRMACIÓN DE COMPRA (TW-17 · TW-22)       -->
     <!-- =============================================================== -->
     {#if recompensaPorConfirmar}
       <div class="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -548,7 +621,7 @@
             </span>
             <div class="min-w-0 flex-1">
               <p class="font-mono text-[10px] font-bold tracking-wider text-tezcat-cyan uppercase">
-                Confirmar Canje de Recompensa
+                Confirmar Canje de Recompensa · TW-22
               </p>
               <h2 id="titulo-modal-canje" class="mt-0.5 truncate text-base font-bold text-white">
                 {recompensaPorConfirmar.nombre}
