@@ -12,6 +12,7 @@
       ['Usuarios', '/admin/usuarios'],
       ['Departamentos', '/admin/departamentos'],
       ['Etiquetas', '/admin/etiquetas'],
+      ['Recompensas', '/admin/recompensas'],
       ['Auditoría', '/admin/auditoria'],
       ['Perfil', '/perfil']
     ],
@@ -19,6 +20,7 @@
       ['Inicio', '/dashboard'],
       ['Tareas', '/tareas'],
       ['Muro', '/muro'],
+      ['Tienda', '/tienda'],
       ['Equipo', '/equipo'],
       ['Perfil', '/perfil']
     ],
@@ -26,6 +28,7 @@
       ['Inicio', '/dashboard'],
       ['Tareas', '/tareas'],
       ['Muro', '/muro'],
+      ['Tienda', '/tienda'],
       ['Perfil', '/perfil']
     ]
   };

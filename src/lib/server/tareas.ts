@@ -2,7 +2,13 @@ import { error } from '@sveltejs/kit';
 import { and, asc, desc, eq, inArray, or, isNull } from 'drizzle-orm';
 import { db } from '$lib/server/db';
 import {
-  etiquetas, tareaEtiquetas, departamentos, movimientosXp, movimientosPuntos,
+  etiquetas,
+  tareaEtiquetas,
+  departamentos,
+  movimientosXp,
+  movimientosPuntos,
+  ramas,
+  movimientosRama,
   estadoTarea,
   proyectos,
   tareaArchivos,
@@ -256,7 +262,7 @@ export async function opcionesParaCrear(actor: Encargado) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Creación de tareas obligatorias y opcionales                             */
+/* Creación de tareas obligatorias y opcionales                        */
 /* ------------------------------------------------------------------ */
 
 export async function crearTarea(actor: Encargado, form: FormData) {
@@ -484,12 +490,69 @@ export async function cambiarEstado(
         observaciones
       });
     } else if (esAprobacionRevision) {
-      // El cambio condicional de estado permite acreditar una sola vez, incluso con aprobaciones simultáneas.
+      // =====================================================================
+      // TW-16, TW-17 y TW-18: Acreditación de EXP, Monedas y Ramas (Skills)
+      // Al aprobar una tarea OPCIONAL, se suma la EXP general (movimientosXp),
+      // las monedas (movimientosPuntos) y +1 punto de habilidad en cada
+      // etiqueta/rama marcada en la actividad (movimientosRama).
+      // =====================================================================
       if (tarea.tipo === 'OPCIONAL' && tarea.responsableId) {
-        const recompensa = { usuarioId: tarea.responsableId, tareaId: tarea.id, motivo: 'Tarea aprobada: ' + tarea.titulo };
-        if ((tarea.xpOfrecido ?? 0) > 0) await tx.insert(movimientosXp).values({ ...recompensa, cantidad: tarea.xpOfrecido! });
-        if ((tarea.puntosOfrecidos ?? 0) > 0) await tx.insert(movimientosPuntos).values({ ...recompensa, cantidad: tarea.puntosOfrecidos! });
+        const recompensa = {
+          usuarioId: tarea.responsableId,
+          tareaId: tarea.id,
+          motivo: 'Tarea aprobada: ' + tarea.titulo
+        };
+
+        // TW-16: Acumular EXP general al integrante
+        if ((tarea.xpOfrecido ?? 0) > 0) {
+          await tx.insert(movimientosXp).values({ ...recompensa, cantidad: tarea.xpOfrecido! });
+        }
+
+        // TW-17: Acumular monedas/puntos canjeables al integrante
+        if ((tarea.puntosOfrecidos ?? 0) > 0) {
+          await tx.insert(movimientosPuntos).values({ ...recompensa, cantidad: tarea.puntosOfrecidos! });
+        }
+
+        // TW-18: Desarrollar ramas de habilidad (+1 punto en cada etiqueta marcada en la tarea)
+        const etiquetasTarea = await tx
+          .select({
+            id: etiquetas.id,
+            nombre: etiquetas.nombre,
+            categoria: etiquetas.categoria
+          })
+          .from(tareaEtiquetas)
+          .innerJoin(etiquetas, eq(etiquetas.id, tareaEtiquetas.etiquetaId))
+          .where(eq(tareaEtiquetas.tareaId, tarea.id));
+
+        for (const et of etiquetasTarea) {
+          // Sincronizar la etiqueta con el catálogo de ramas sin alterar el esquema
+          let [rama] = await tx
+            .select({ id: ramas.id })
+            .from(ramas)
+            .where(eq(ramas.nombre, et.nombre))
+            .limit(1);
+
+          if (!rama) {
+            [rama] = await tx
+              .insert(ramas)
+              .values({
+                nombre: et.nombre,
+                descripcion: et.categoria,
+                color: et.categoria === 'LENGUAJE DE PROGRAMACIÓN' ? 'cyan' : 'purple',
+                activo: true
+              })
+              .returning({ id: ramas.id });
+          }
+
+          await tx.insert(movimientosRama).values({
+            usuarioId: tarea.responsableId,
+            ramaId: rama.id,
+            tareaId: tarea.id,
+            puntos: 1
+          });
+        }
       }
+
       await tx.insert(tareaRevisiones).values({
         tareaId: tarea.id,
         revisorId: actor.id,
@@ -1313,6 +1376,7 @@ export async function eliminarTarea(actor: Actor, tareaId: string) {
 
   return { id: tarea.id, eliminada: true };
 }
+
 /** La condición del UPDATE garantiza una sola asignación incluso con peticiones simultáneas. */
 export async function asignarDesdeMuro(actor: Actor, tareaId: string, responsableElegido?: string) {
   const convertir = responsableElegido !== undefined;
