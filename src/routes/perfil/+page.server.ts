@@ -1,5 +1,5 @@
 import { fail, redirect, type Actions } from '@sveltejs/kit';
-import { and, asc, desc, eq, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import type { PageServerLoad } from './$types';
 import { db } from '$lib/server/db';
 import {
@@ -9,6 +9,7 @@ import {
   movimientosPuntos,
   movimientosRama,
   movimientosXp,
+  proyectos,
   ramas,
   recompensas,
   tareaEtiquetas,
@@ -41,7 +42,8 @@ export const load: PageServerLoad = async ({ locals }) => {
     catalogoEtiquetasDepto,
     recompensasDisponibles,
     misCanjes,
-    historialPuntos
+    historialPuntos,
+    tareasOpcionalesTerminadasBD
   ] = await Promise.all([
     db
       .select({ total: sql<string>`coalesce(sum(${movimientosXp.cantidad}), 0)` })
@@ -101,13 +103,13 @@ export const load: PageServerLoad = async ({ locals }) => {
           .where(and(eq(etiquetas.departamentoId, user.departamentoId), eq(etiquetas.activo, true)))
           .orderBy(asc(etiquetas.nombre))
       : Promise.resolve([]),
-    // TW-17: Catálogo de recompensas activas para canjear monedas
+    // TW-17 / TW-22: Catálogo de recompensas activas para canjear monedas
     db
       .select()
       .from(recompensas)
       .where(eq(recompensas.activo, true))
       .orderBy(asc(recompensas.costoPuntos), asc(recompensas.nombre)),
-    // TW-17: Historial de canjes solicitados por el usuario
+    // TW-17 / TW-22: Historial de canjes solicitados por el usuario
     db
       .select({
         id: canjes.id,
@@ -123,7 +125,7 @@ export const load: PageServerLoad = async ({ locals }) => {
       .where(eq(canjes.usuarioId, user.id))
       .orderBy(desc(canjes.creadoEn))
       .limit(20),
-    // TW-17: Movimientos de monedas (ganadas en tareas opcionales y gastadas en canjes)
+    // TW-17 / TW-19: Movimientos de monedas (ganadas en tareas opcionales y gastadas en canjes)
     db
       .select({
         id: movimientosPuntos.id,
@@ -135,8 +137,61 @@ export const load: PageServerLoad = async ({ locals }) => {
       .from(movimientosPuntos)
       .where(eq(movimientosPuntos.usuarioId, user.id))
       .orderBy(desc(movimientosPuntos.creadoEn))
+      .limit(20),
+    // TW-19: Historial de contribuciones opcionales aprobadas del integrante
+    db
+      .select({
+        id: tareas.id,
+        numero: tareas.numero,
+        titulo: tareas.titulo,
+        dificultad: tareas.dificultad,
+        xpOfrecido: tareas.xpOfrecido,
+        puntosOfrecidos: tareas.puntosOfrecidos,
+        proyectoNombre: proyectos.nombre,
+        fechaAprobacion: tareas.actualizadoEn
+      })
+      .from(tareas)
+      .leftJoin(proyectos, eq(tareas.proyectoId, proyectos.id))
+      .where(
+        and(
+          eq(tareas.responsableId, user.id),
+          eq(tareas.tipo, 'OPCIONAL'),
+          eq(tareas.estado, 'TERMINADA')
+        )
+      )
+      .orderBy(desc(tareas.actualizadoEn))
       .limit(20)
   ]);
+
+  // Obtener etiquetas asociadas a cada contribución opcional aprobada
+  const idsTareasOpcionales = tareasOpcionalesTerminadasBD.map((t) => t.id);
+  const etiquetasDeContribuciones =
+    idsTareasOpcionales.length > 0
+      ? await db
+          .select({
+            tareaId: tareaEtiquetas.tareaId,
+            nombre: etiquetas.nombre,
+            categoria: etiquetas.categoria
+          })
+          .from(tareaEtiquetas)
+          .innerJoin(etiquetas, eq(etiquetas.id, tareaEtiquetas.etiquetaId))
+          .where(inArray(tareaEtiquetas.tareaId, idsTareasOpcionales))
+      : [];
+
+  const mapaEtiquetasPorTarea = new Map<
+    string,
+    { nombre: string; categoria: 'LENGUAJE DE PROGRAMACIÓN' | 'FRAMEWORK' }[]
+  >();
+  for (const row of etiquetasDeContribuciones) {
+    const lista = mapaEtiquetasPorTarea.get(row.tareaId) ?? [];
+    lista.push({ nombre: row.nombre, categoria: row.categoria });
+    mapaEtiquetasPorTarea.set(row.tareaId, lista);
+  }
+
+  const contribucionesOpcionales = tareasOpcionalesTerminadasBD.map((t) => ({
+    ...t,
+    etiquetas: mapaEtiquetasPorTarea.get(t.id) ?? []
+  }));
 
   const expTotal = Math.max(0, Number(exp.total) || 0);
   const monedasTotal = Number(monedas.total) || 0;
@@ -176,6 +231,86 @@ export const load: PageServerLoad = async ({ locals }) => {
     (a, b) => b.puntos - a.puntos || a.nombre.localeCompare(b.nombre)
   );
 
+  // TW-19: Especialidades demostradas del integrante (ramas con experiencia > 0)
+  const especialidades = habilidades
+    .filter((h) => h.puntos > 0)
+    .slice(0, 6)
+    .map((h) => ({
+      ...h,
+      rango:
+        h.puntos >= 5 ? 'Maestro' : h.puntos >= 3 ? 'Especialista' : 'Practicante'
+    }));
+
+  // TW-19: Insignias y logros calculados a partir de movimientos registrados
+  const totalContribuciones = Math.max(contribucionesOpcionales.length, historialXp.length);
+  const maxPuntosRama = habilidades.reduce((max, h) => Math.max(max, h.puntos), 0);
+  const ramasLenguajeActivas = habilidades.filter(
+    (h) => h.categoria === 'LENGUAJE DE PROGRAMACIÓN' && h.puntos > 0
+  ).length;
+  const ramasFrameworkActivas = habilidades.filter(
+    (h) => h.categoria === 'FRAMEWORK' && h.puntos > 0
+  ).length;
+  const monedasGanadasHistoricas = historialPuntos
+    .filter((m) => m.cantidad > 0)
+    .reduce((acc, m) => acc + m.cantidad, 0);
+
+  const insignias = [
+    {
+      id: 'pionero_muro',
+      titulo: 'Pionero del Muro',
+      descripcion: 'Completar y aprobar tu primera tarea opcional del Muro.',
+      icono: 'military_tech',
+      actual: Math.min(1, totalContribuciones),
+      meta: 1,
+      desbloqueada: totalContribuciones >= 1
+    },
+    {
+      id: 'colaborador_constante',
+      titulo: 'Colaborador Constante',
+      descripcion: 'Aprobar 3 o más contribuciones opcionales en tu departamento.',
+      icono: 'workspace_premium',
+      actual: Math.min(3, totalContribuciones),
+      meta: 3,
+      desbloqueada: totalContribuciones >= 3
+    },
+    {
+      id: 'ascenso_rango',
+      titulo: 'Ascenso de Rango',
+      descripcion: 'Acumular 1,000 EXP en movimientos para alcanzar el Nivel 2.',
+      icono: 'bolt',
+      actual: Math.min(1000, expTotal),
+      meta: 1000,
+      desbloqueada: expTotal >= 1000
+    },
+    {
+      id: 'especialista_tecnico',
+      titulo: 'Especialista Técnico',
+      descripcion: 'Alcanzar Nivel 3 (3 pts) de dominio en una rama de habilidad.',
+      icono: 'psychology',
+      actual: Math.min(3, maxPuntosRama),
+      meta: 3,
+      desbloqueada: maxPuntosRama >= 3
+    },
+    {
+      id: 'perfil_poliglota',
+      titulo: 'Perfil Versátil',
+      descripcion: 'Sumar experiencia tanto en Lenguajes de Programación como en Frameworks.',
+      icono: 'hub',
+      actual: (ramasLenguajeActivas > 0 ? 1 : 0) + (ramasFrameworkActivas > 0 ? 1 : 0),
+      meta: 2,
+      desbloqueada: ramasLenguajeActivas > 0 && ramasFrameworkActivas > 0
+    },
+    {
+      id: 'gestor_recompensas',
+      titulo: 'Ahorrador Tezcat',
+      descripcion: 'Obtener 100 monedas por trabajo opcional o realizar tu primer canje.',
+      icono: 'redeem',
+      actual: misCanjes.length >= 1 ? 100 : Math.min(100, monedasGanadasHistoricas),
+      meta: 100,
+      desbloqueada: monedasGanadasHistoricas >= 100 || misCanjes.length >= 1
+    }
+  ];
+
   return {
     user,
     departamento,
@@ -192,6 +327,9 @@ export const load: PageServerLoad = async ({ locals }) => {
       porcentajeNivel
     },
     habilidades,
+    especialidades,
+    insignias,
+    contribucionesOpcionales,
     historialXp,
     recompensas: recompensasDisponibles,
     misCanjes,
@@ -200,7 +338,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 };
 
 export const actions: Actions = {
-  // TW-17: Acción transaccional para gastar puntos (monedas) en una recompensa del catálogo
+  // TW-17 / TW-22: Acción transaccional para gastar puntos (monedas) en una recompensa del catálogo
   canjear: async ({ locals, request }) => {
     const user = locals.user;
     if (!user) redirect(303, '/login');
