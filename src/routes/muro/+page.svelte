@@ -137,7 +137,7 @@
     <div class="mb-7 flex flex-wrap items-end justify-between gap-4">
       <div>
         <p class="font-mono text-[11px] font-semibold tracking-widest text-tezcat-cyan uppercase">
-          TW-13 · TW-14 · TW-15 · Trabajo voluntario
+          Trabajo voluntario
         </p>
         <h1 class="mt-1 text-2xl font-bold tracking-tight text-white">Muro de oportunidades</h1>
         <p class="mt-1.5 max-w-2xl text-xs text-tezcat-textSecondary">

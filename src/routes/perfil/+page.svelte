@@ -204,7 +204,7 @@
 
     <!-- TW-20 y TW-18: Gráfica Radar Interactiva y Valores Numéricos de Ramas de Habilidad -->
     <Panel
-      titulo="Gráfica radar de ramas de habilidad (TW-18 · TW-20)"
+      titulo="Gráfica radar de ramas de habilidad"
       descripcion="Visualización poligonal e inventario numérico de la experiencia técnica acumulada en trabajo opcional aprobado."
     >
       {#snippet acciones()}
@@ -224,7 +224,7 @@
       <!-- TW-19: Insignias y Logros Desbloqueables (5 columnas) -->
       <div class="lg:col-span-5">
         <Panel
-          titulo="Insignias y logros (TW-19)"
+          titulo="Insignias y logros"
           descripcion="Reconocimientos otorgados automáticamente a partir de tus movimientos registrados."
           acento="gold"
         >
@@ -280,7 +280,7 @@
       <!-- TW-16, TW-17 y TW-19: Historial de Contribuciones Opcionales y Movimientos Registrados (7 columnas) -->
       <div class="lg:col-span-7">
         <Panel
-          titulo="Historial de contribuciones y movimientos (TW-16 · TW-19)"
+          titulo="Historial de contribuciones y movimientos"
           descripcion="Registro verificable de actividades opcionales aprobadas, experiencia (EXP) y movimientos de monedas."
         >
           <!-- Pestañas de navegación del historial -->

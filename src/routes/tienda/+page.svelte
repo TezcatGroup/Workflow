@@ -152,7 +152,7 @@
         <div class="space-y-1.5">
           <div class="flex flex-wrap items-center gap-2">
             <span class="rounded bg-tezcat-surfaceAlt px-2.5 py-0.5 font-mono text-[10px] font-semibold tracking-wider text-tezcat-cyan uppercase">
-              TW-17 · TW-22 · Módulo de Beneficios
+              Módulo de Beneficios
             </span>
             <span class="font-mono text-[10px] text-tezcat-textMuted">•</span>
             <span class="font-mono text-[10px] tracking-widest text-tezcat-textSecondary uppercase">
