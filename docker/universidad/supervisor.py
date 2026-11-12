@@ -4,6 +4,7 @@ tini recoge procesos huérfanos; PostgreSQL y Node se ejecutan sin privilegios.
 """
 import os
 import json
+import fcntl
 import pathlib
 import pwd
 import signal
@@ -18,6 +19,7 @@ DATA = ROOT / 'postgres'
 BIN = '/usr/lib/postgresql/16/bin/'
 children = []
 stopping = False
+volume_lock = None
 
 
 def stop_requested(signum, frame):
@@ -58,6 +60,7 @@ def psql(statement):
 
 
 def main():
+    global volume_lock
     origin = urlsplit(os.environ.get('ORIGIN', ''))
     if os.environ.get('ORIGIN') and (origin.scheme not in ('http', 'https') or not origin.netloc or origin.path not in ('', '/')):
         raise ValueError('ORIGIN debe ser la URL pública completa, por ejemplo http://192.168.1.20:3000')
@@ -66,12 +69,30 @@ def main():
     if origin.scheme == 'http' and os.environ.get('WORKFLOW_LOCAL_HTTP') != 'true':
         raise ValueError('Para HTTP local define WORKFLOW_LOCAL_HTTP=true; para HTTPS usa false')
     postgres = pwd.getpwnam('postgres')
+    node = pwd.getpwnam('node')
+    ROOT.mkdir(mode=0o755, exist_ok=True)
+    volume_lock = open(ROOT / '.workflow.lock', 'a')
+    try:
+        fcntl.flock(volume_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        raise RuntimeError('El volumen ya está en uso por otra instancia de Workflow')
+    version_file = DATA / 'PG_VERSION'
+    password_file = ROOT / 'db-password'
+    if version_file.exists():
+        if version_file.read_text().strip() != '16':
+            raise RuntimeError('El volumen no es PostgreSQL 16; requiere una migración explícita')
+        if not password_file.is_file() or not password_file.read_text().strip():
+            raise RuntimeError('Falta db-password de una base existente; restaura la configuración, no se regenerará')
+    elif DATA.exists() and any(DATA.iterdir()):
+        raise RuntimeError('El directorio postgres contiene datos sin PG_VERSION; no se reinicializará')
+    uploads = ROOT / 'uploads'
+    uploads.mkdir(mode=0o700, exist_ok=True)
+    os.chown(uploads, node.pw_uid, node.pw_gid)
     DATA.mkdir(mode=0o700, exist_ok=True)
     os.chown(DATA, postgres.pw_uid, postgres.pw_gid)
     if not (DATA / 'PG_VERSION').exists():
         wait(start([BIN + 'initdb', '-D', str(DATA), '--auth-local=peer',
                     '--auth-host=scram-sha-256', '--encoding=UTF8', '--locale=C.UTF-8'], 'postgres'))
-    password_file = ROOT / 'db-password'
     if not password_file.exists():
         password = os.environ.get('POSTGRES_PASSWORD') or 'Pass123456'
         if len(password) < 10:

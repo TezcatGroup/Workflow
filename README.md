@@ -21,12 +21,17 @@ Desde otra máquina usa `http://IP_DEL_EQUIPO:3000` si el firewall permite el ac
 Repetir el bloque reutiliza el contenedor sin restablecer sus datos o contraseña.
 Las migraciones están en la imagen; no se monta el repositorio ni SMB.
 
-**Estado de fase 2:** no elimines ni recrees el contenedor con datos importantes;
-el volumen persistente se implementará en la fase 3. El bloque usa `--no-recreate`
-y no actualiza contenedores existentes.
+**Persistencia:** las instalaciones nuevas guardan PostgreSQL, credenciales y
+adjuntos en el volumen Docker `workflow_data`. Los datos sobreviven a la
+recreación si se reutiliza ese volumen. No elimines el volumen. El bloque usa
+`--no-recreate` y no actualiza contenedores anteriores automáticamente.
+
+Si ya tenías un contenedor de fase 2 sin volumen, conserva ese contenedor:
+esta versión no copia ni migra sus datos automáticamente. Consulta la guía
+antes de recrearlo.
 
 Consulta [la guía Docker](DOCKER_DEPLOYMENT.md) y el
-[informe de pruebas](docker/universidad/FASE2_VALIDACION.md).
+[informe de persistencia](docker/universidad/FASE3_VALIDACION.md).
 
 ## Credenciales de demostración
 
@@ -60,7 +65,7 @@ Las métricas de tareas y proyectos pertenecen a sprints posteriores, cuando exi
 
 ## Etiquetas y muro de tareas opcionales
 
-La migración `0007_etiquetas_muro` crea el catálogo de etiquetas por departamento y su relación con las tareas. Se aplica con `pnpm db:migrate` o con el servicio `migrate` del despliegue Docker. Conserva los datos existentes.
+La migración `0007_etiquetas_muro` crea el catálogo de etiquetas por departamento y su relación con las tareas. Se aplica con `pnpm db:migrate` o automáticamente al arrancar el contenedor Docker. Conserva los datos existentes.
 
 El administrador crea, edita y desactiva etiquetas persistentes. El encargado publica tareas opcionales sin responsable y selecciona etiquetas activas de su departamento. En `/muro`, los miembros del mismo departamento pueden leer la descripción completa y tomar una tarea; los encargados pueden convertirla en obligatoria eligiendo un miembro activo. Las tareas tomadas o convertidas salen del muro y aparecen en las tareas del responsable. La asignación y su evento se guardan en una transacción que impide asignaciones simultáneas.
 

@@ -29,9 +29,9 @@ COPY --from=production-deps /app/node_modules ./node_modules
 COPY package.json ./
 COPY drizzle ./drizzle
 COPY docker/universidad /app/docker/universidad
-RUN mkdir -p /app/uploads /var/lib/workflow /run/postgresql \
-    && chown node:node /app/uploads \
-    && chown postgres:postgres /var/lib/workflow /run/postgresql
+RUN mkdir -p /var/lib/workflow /run/postgresql \
+    && ln -s /var/lib/workflow/uploads /app/uploads \
+    && chown postgres:postgres /run/postgresql
 EXPOSE 3000
 HEALTHCHECK --interval=15s --timeout=5s --start-period=60s --retries=3 CMD ["node", "/app/docker/universidad/healthcheck.mjs"]
 ENTRYPOINT ["/usr/bin/tini", "--", "python3", "/app/docker/universidad/supervisor.py"]

@@ -21,7 +21,8 @@ El firewall del anfitrión debe permitir el acceso; el script no modifica el fir
 Solo se crea **un contenedor `app`**, con frontend, backend y PostgreSQL 16.
 `--no-recreate` reutiliza el contenedor existente; repetir el bloque no borra sus
 datos ni cambia sus contraseñas. Tampoco actualiza un contenedor existente:
-la actualización segura se completará con la persistencia de la fase 3.
+para actualizar una instalación que ya usa el volumen, sigue el procedimiento
+de persistencia de esta guía.
 Si el puerto 3000 está ocupado, Docker lo informa; no se detienen servicios ajenos.
 Docker Compose v2 es requisito (incluido en Docker Desktop).
 
@@ -51,7 +52,8 @@ arranque con `docker run -e`; no se necesitan para el bloque automático.
 
 ```text
 docker build -t workflow:local .
-docker run -d --name workflow --stop-timeout 45 -p 3000:3000 workflow:local
+docker volume create workflow_data
+docker run -d --name workflow --stop-timeout 45 --mount type=volume,source=workflow_data,target=/var/lib/workflow -p 3000:3000 workflow:local
 docker exec workflow node docker/universidad/access.mjs
 ```
 
@@ -82,16 +84,69 @@ compatibilidad: el comando antiguo de dos archivos también define un solo servi
 La comunicación de tareas es HTTP con actualización cada 12 segundos;
 no hay WebSockets implementados actualmente.
 
-## Estado de persistencia: fase 2
+## Persistencia: fase 3
 
-**Todavía no se ha implementado la fase 3.** Los datos sobreviven al reinicio del
-mismo contenedor, pero no a su eliminación. No uses `docker compose down`,
-`--force-recreate` ni elimines contenedores con datos importantes.
-PostgreSQL está en `/var/lib/workflow/postgres`, su clave interna en
-`/var/lib/workflow/db-password` y los adjuntos en `/app/uploads`.
-El antiguo volumen `postgres_data` no se importa ni elimina automáticamente.
-La fase 3 reunirá los datos en `workflow_data`; respaldos y restauración se
-implementarán en su fase correspondiente.
+Compose crea automáticamente un volumen administrado llamado `workflow_data`
+y lo monta en `/var/lib/workflow`. No es otro contenedor y no depende de SMB.
+El volumen vive en el almacenamiento del motor Docker y tiene un ciclo de vida
+independiente de la imagen y del contenedor.
+
+| Datos | Ruta dentro del volumen |
+| --- | --- |
+| PostgreSQL 16: usuarios, hashes, sesiones, proyectos, tareas, mensajes, configuración y demás tablas | `postgres/` |
+| Adjuntos físicos | `uploads/` |
+| Contraseña interna PostgreSQL | `db-password` |
+| Credenciales iniciales del administrador | `initial-admin.json` |
+
+La ruta histórica `/app/uploads` es un enlace interno al directorio persistente;
+no cambia las URLs ni la lógica de adjuntos. Las migraciones aplicadas y la marca
+de bootstrap permanecen en PostgreSQL. El arranque solo ejecuta initdb si el
+directorio está vacío, rechaza datos parciales sin PG_VERSION y versiones mayores
+distintas de 16, y no regenera una contraseña perdida de una base existente.
+Un bloqueo exclusivo impide arrancar dos instancias sobre el mismo volumen.
+Las migraciones pendientes se aplican con el registro Drizzle; si fallan no se
+inicia la web. No se ejecuta db:push ni se borran tablas o restablecen cuentas.
+
+### Actualizar o recrear una instalación con volumen
+
+Antes de actualizar, comprueba que el contenedor tiene el volumen esperado:
+
+```text
+docker inspect workflow-unico-app-1 --format '{{json .Mounts}}'
+```
+
+Debe mostrar Type=volume, Name=workflow_data y Destination=/var/lib/workflow.
+Si no aparece ese montaje, NO sigas este procedimiento: es una instalación
+anterior sin persistencia y requiere una transferencia explícita de datos.
+Conserva también un respaldo consistente antes de actualizar datos importantes;
+la automatización de respaldos se implementará en la fase 5.
+
+Para una instalación con ese volumen, reconstruir y recrear mantiene los datos:
+
+```text
+docker compose -p workflow-unico up -d --build --force-recreate
+docker compose -p workflow-unico exec -T app node docker/universidad/access.mjs
+```
+
+También puedes detener y eliminar únicamente el contenedor con Compose y volver
+a levantarlo: `docker compose -p workflow-unico down` (sin opción de volúmenes)
+seguido del bloque de inicio. Nunca elimines `workflow_data`, ni uses eliminación
+de volúmenes o limpieza global. Ningún script del proyecto elimina volúmenes.
+Cambiar de imagen debe mantener PostgreSQL 16 y migraciones compatibles; volver
+a una imagen antigua tras migrar el esquema no es un rollback garantizado.
+
+### Instalaciones anteriores y varias copias
+
+Esta fase no importa automáticamente datos de contenedores sin volumen ni del
+antiguo `postgres_data`. No recrees esos contenedores para añadir el montaje:
+el nuevo volumen estaría vacío. Conserva la instancia original hasta preparar
+una transferencia consistente de base, archivos y configuración; no se han
+migrado datos reales durante este trabajo.
+
+El nombre `workflow_data` es estable aunque cambie el nombre del proyecto Compose.
+Solo una instancia puede usarlo a la vez. Para pruebas independientes se puede
+establecer opcionalmente WORKFLOW_VOLUME_NAME con otro nombre; el profesor no
+necesita configurar esa variable. No apuntes ese volumen a un controlador SMB.
 
 Para detener, iniciar y consultar logs sin recrear:
 
