@@ -23,7 +23,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
     && apt-get purge -y --auto-remove curl \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
-ENV NODE_ENV=production HOST=0.0.0.0 PORT=3000 ORIGIN=http://localhost:3000 BODY_SIZE_LIMIT=12M WORKFLOW_LOCAL_HTTP=true SHUTDOWN_TIMEOUT=5
+ENV NODE_ENV=production HOST=0.0.0.0 PORT=3000 BODY_SIZE_LIMIT=12M WORKFLOW_LOCAL_HTTP=true SHUTDOWN_TIMEOUT=5
 COPY --from=build /app/build ./build
 COPY --from=production-deps /app/node_modules ./node_modules
 COPY package.json ./

@@ -38,8 +38,10 @@ try {
     console.log('APROBADO: datos, contraseña, migraciones y adjuntos persisten tras reiniciar.');
   } else {
     const suffix = randomUUID();
-    const adminEmail = process.env.ADMIN_EMAIL || 'admin@universidad.local';
-    const adminPassword = process.env.ADMIN_PASSWORD || 'WorkflowUniversidad123!';
+    const initial = JSON.parse(await readFile('/var/lib/workflow/initial-admin.json', 'utf8'));
+    const adminEmail = initial.email;
+    const adminPassword = initial.password;
+    assert.ok(adminEmail && adminPassword, 'configura las credenciales del administrador de prueba');
     const admin = await login(adminEmail, adminPassword);
     assert.equal((await request('/admin', admin)).status, 200);
     assert.equal((await request('/admin')).status, 303);

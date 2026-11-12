@@ -3,6 +3,7 @@
 tini recoge procesos huérfanos; PostgreSQL y Node se ejecutan sin privilegios.
 """
 import os
+import json
 import pathlib
 import pwd
 import secrets
@@ -11,6 +12,7 @@ import subprocess
 import sys
 import time
 from urllib.parse import quote
+from urllib.parse import urlsplit
 
 ROOT = pathlib.Path('/var/lib/workflow')
 DATA = ROOT / 'postgres'
@@ -57,6 +59,13 @@ def psql(statement):
 
 
 def main():
+    origin = urlsplit(os.environ.get('ORIGIN', ''))
+    if os.environ.get('ORIGIN') and (origin.scheme not in ('http', 'https') or not origin.netloc or origin.path not in ('', '/')):
+        raise ValueError('ORIGIN debe ser la URL pública completa, por ejemplo http://192.168.1.20:3000')
+    if origin.query or origin.fragment or origin.username or origin.password:
+        raise ValueError('ORIGIN no admite credenciales, parámetros ni fragmentos')
+    if origin.scheme == 'http' and os.environ.get('WORKFLOW_LOCAL_HTTP') != 'true':
+        raise ValueError('Para HTTP local define WORKFLOW_LOCAL_HTTP=true; para HTTPS usa false')
     postgres = pwd.getpwnam('postgres')
     DATA.mkdir(mode=0o700, exist_ok=True)
     os.chown(DATA, postgres.pw_uid, postgres.pw_gid)
@@ -92,11 +101,21 @@ def main():
          "WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = 'workflow') \\gexec\n")
     environment = dict(os.environ)
     environment['DATABASE_URL'] = 'postgresql://workflow:' + quote(password, safe='') + '@127.0.0.1:5432/workflow'
+    credentials_file = ROOT / 'initial-admin.json'
+    if not credentials_file.exists():
+        credentials = {'email': os.environ.get('ADMIN_EMAIL') or 'admin@workflow.local',
+                       'password': os.environ.get('ADMIN_PASSWORD') or secrets.token_urlsafe(24)}
+        with open(credentials_file, 'x', opener=lambda path, flags: os.open(path, flags, 0o600)) as file:
+            json.dump(credentials, file)
+    credentials = json.loads(credentials_file.read_text())
+    environment['ADMIN_EMAIL'] = credentials['email']
+    environment['ADMIN_PASSWORD'] = credentials['password']
+    environment['PROTOCOL_HEADER'] = 'x-workflow-protocol'
     # El usuario node no necesita conocer variables del bootstrap tras inicializar.
     wait(start(['node', '/app/docker/universidad/initialize.mjs'], 'node', env=environment))
     for key in ('ADMIN_PASSWORD', 'POSTGRES_PASSWORD'):
         environment.pop(key, None)
-    app = start(['node', 'build'], 'node', env=environment)
+    app = start(['node', '/app/docker/universidad/server.mjs'], 'node', env=environment)
     print('Workflow universidad: aplicación y PostgreSQL iniciados.', flush=True)
     while not stopping:
         if pg.poll() is not None or app.poll() is not None:
