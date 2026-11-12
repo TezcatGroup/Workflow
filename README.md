@@ -48,7 +48,8 @@ docker compose -p workflow-unico exec -T app node docker/universidad/access.mjs
 No compila ni descarga dependencias. Usa un contenedor y el volumen workflow_data.
 El TAR contiene la aplicación; los datos existentes requieren respaldo aparte.
 Para construir directamente desde SMB, consulta el método A de la misma guía.
-Resultados y límites: [validación de fase 4](docker/universidad/FASE4_VALIDACION.md).
+Resultados y límites: [validación de fase 4](docker/universidad/FASE4_VALIDACION.md)
+y [prueba real de SMB en Proxmox](docker/universidad/SMB_VALIDACION_VM.md).
 
 ## Credenciales de demostración
 

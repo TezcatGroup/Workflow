@@ -66,7 +66,14 @@ posterior puede cambiar por las imágenes base, paquetes del sistema y fuentes.
 11. Validación de Compose confirma un servicio, sin build ni pull y nombre
     predeterminado workflow_data. git diff --check pasa.
 
-## Pendientes y límites
+## Actualización: prueba SMB en Proxmox
+
+Posteriormente se ejecutó una construcción real sobre CIFS/SMB 3.1.1 en la VM
+Debian, además de acceso desde Windows por LAN y reinicio sin SMB ni red.
+Resultados: [SMB_VALIDACION_VM.md](SMB_VALIDACION_VM.md). Las limitaciones
+siguientes describen el estado de la primera prueba local.
+
+## Pendientes y límites de la primera prueba local
 
 - Get-SmbMapping no mostró recursos montados. No se probó una lectura real
   sobre SMB ni se reprodujo el error original del profesor. El método A está

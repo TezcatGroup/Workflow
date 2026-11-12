@@ -159,14 +159,16 @@ docker compose -p workflow-unico logs app
 ## SMB y límites de compatibilidad
 
 Se eliminó `./drizzle:/app/drizzle:ro`, una dependencia real de archivos externos.
-No se ha reproducido el fallo original del profesor en SMB. Durante la
+Se validó una construcción real sobre CIFS/SMB 3.1.1 de solo lectura en una VM
+Debian de Proxmox; consulta [el informe](docker/universidad/SMB_VALIDACION_VM.md).
+No se ha reproducido el fallo original del profesor. Durante la
 construcción Docker necesita leer el contexto; durante la ejecución no necesita
 la carpeta compartida. Los cambios de permisos se aplican dentro del contenedor.
 No montes PostgreSQL sobre SMB.
 
 El flujo usa comandos Docker comunes a Windows, Linux y macOS con motor Linux.
-La prueba realizada es Linux amd64 sobre Docker Desktop en Windows; macOS,
-Linux nativo y ARM64 quedan pendientes de validación real. No se garantiza
+Se probó Linux amd64 tanto en Docker Desktop de Windows como en la VM Debian
+de Proxmox. macOS y ARM64 quedan pendientes de validación real. No se garantiza
 compatibilidad con cualquier hardware ni con el modo Windows containers.
 
 ## Fase 4 — Método A: construir desde una carpeta SMB
