@@ -1,0 +1,15 @@
+# Se entrega junto a workflow-2026.11.12.tar; no necesita el repositorio.
+services:
+  app:
+    image: workflow:2026.11.12
+    pull_policy: never
+    restart: unless-stopped
+    stop_grace_period: 45s
+    ports:
+      - "3000:3000"
+    volumes:
+      - workflow_data:/var/lib/workflow
+
+volumes:
+  workflow_data:
+    name: ${WORKFLOW_VOLUME_NAME:-workflow_data}

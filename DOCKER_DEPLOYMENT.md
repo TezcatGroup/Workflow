@@ -168,3 +168,132 @@ El flujo usa comandos Docker comunes a Windows, Linux y macOS con motor Linux.
 La prueba realizada es Linux amd64 sobre Docker Desktop en Windows; macOS,
 Linux nativo y ARM64 quedan pendientes de validación real. No se garantiza
 compatibilidad con cualquier hardware ni con el modo Windows containers.
+
+## Fase 4 — Método A: construir desde una carpeta SMB
+
+La carpeta debe estar ya accesible para el usuario que ejecuta Docker. No se
+configura Samba ni se cambian los permisos del recurso compartido. Abre una
+terminal en la raíz de Workflow dentro de esa carpeta y ejecuta:
+
+```text
+docker build -t workflow:2026.11.12 .
+```
+
+En PowerShell puedes entrar con `Set-Location '\\servidor\recurso\Workflow'`;
+en Linux/macOS usa `cd /ruta/del/recurso/Workflow`, con la ruta real ya montada.
+Estos son ejemplos de rutas, no requisitos de nombre del servidor.
+
+Docker necesita leer Dockerfile, manifiestos, código y migraciones del contexto.
+Las instrucciones COPY los incorporan al build; la instalación de dependencias,
+compilación, escritura de fuentes y cambios de permisos suceden en las capas de
+Docker, no en SMB. El .dockerignore limita lo que se lee y transfiere. No ejecutes
+pnpm install ni chmod/chown sobre la carpeta compartida.
+
+Después de construir, inicia con el volumen administrado, sin montar el recurso:
+
+```text
+docker volume create workflow_data
+docker run -d --name workflow --restart unless-stopped --stop-timeout 45 --mount type=volume,source=workflow_data,target=/var/lib/workflow -p 3000:3000 workflow:2026.11.12
+docker exec workflow node docker/universidad/access.mjs
+```
+
+No ejecutes este bloque si ya tienes otra instancia en ese puerto o volumen.
+Para un contenedor ya creado usa `docker start workflow`.
+
+La lectura desde SMB puede fallar por credenciales del recurso, permisos de
+lectura, desconexiones, archivos no disponibles localmente o restricciones del
+cliente/contexto Docker. Los fallos al descargar paquetes son distintos de SMB.
+Conserva el error exacto de `docker build --progress=plain` para distinguirlos.
+No se ha reproducido el entorno del profesor: el montaje de drizzle eliminado
+era una dependencia real, pero no es una causa confirmada de su fallo.
+Si el contexto no puede leerse de forma fiable, usa el método B.
+
+## Fase 4 — Método B: entregar una imagen, sin repositorio
+
+### Preparación en el equipo que construye
+
+1. Copia o clona la rama Docker en un disco local. Si usas Git:
+
+   ```text
+   git clone --branch Docker https://github.com/TezcatGroup/Workflow.git Workflow-local
+   cd Workflow-local
+   ```
+
+2. Comprueba la arquitectura del motor receptor con `docker info --format
+   '{{.OSType}}/{{.Architecture}}'`. Docker debe usar contenedores Linux.
+   En la máquina de construcción, para un receptor Intel/AMD de 64 bits:
+
+   ```text
+   docker build --platform linux/amd64 -t workflow:2026.11.12 .
+   docker image inspect workflow:2026.11.12 --format '{{.Os}}/{{.Architecture}}'
+   ```
+
+   Para un receptor ARM64, construye con `--platform linux/arm64`; requiere soporte
+   de construcción para esa plataforma. El TAR amd64 no se convierte en ARM al
+   copiarlo. No se ha validado ARM64 en este trabajo.
+
+3. Crea una carpeta de entrega nueva en un disco local, fuera del repositorio.
+   Copia allí `docker/portable/compose.yaml` y `docker/portable/LEEME.md`.
+   Abre una terminal en esa carpeta y exporta:
+
+   ```text
+   docker save -o workflow-2026.11.12.tar workflow:2026.11.12
+   ```
+
+   Usa un directorio nuevo y no sobrescribas un TAR anterior. Mantén juntos la
+   etiqueta de la imagen, el nombre del TAR y la imagen declarada en compose.yaml.
+   Para futuras versiones, cambia los tres nombres de forma consistente.
+
+4. Comprueba el archivo antes y después de transferirlo. En PowerShell:
+
+   ```powershell
+   Get-FileHash -Algorithm SHA256 workflow-2026.11.12.tar
+   ```
+
+   En Linux: `sha256sum workflow-2026.11.12.tar`.
+   En macOS: `shasum -a 256 workflow-2026.11.12.tar`.
+   Los hashes deben coincidir. El hash detecta cambios en la transferencia;
+   no sustituye la confianza en quien entrega la imagen.
+
+5. Transfiere la carpeta por SMB, USB u otro medio. En el receptor, copia los
+   archivos a un disco local antes de importar. No hace falta transferir src,
+   node_modules, Dockerfile, .env ni el resto del repositorio.
+
+### Ejecución en la máquina del profesor
+
+Desde la carpeta recibida, copia este bloque completo. No requiere configuración:
+
+```text
+docker load -i workflow-2026.11.12.tar
+docker compose -p workflow-unico up -d --no-build --pull never --no-recreate
+docker compose -p workflow-unico exec -T app node docker/universidad/access.mjs
+```
+
+Compose no contiene build y prohíbe descargar la imagen. Si load falla, detente
+antes de continuar. El acceso sigue siendo http://localhost:3000 y las credenciales
+son admin@utslp.com / Pass123456 para una base nueva. Solo se crea un contenedor,
+y el volumen workflow_data se crea o reutiliza. No se borran ni importan datos
+existentes automáticamente. El bloque no actualiza un contenedor ya creado.
+
+Para comprobarlo:
+
+```text
+docker compose -p workflow-unico ps
+docker compose -p workflow-unico exec -T app node docker/universidad/healthcheck.mjs
+docker inspect workflow-unico-app-1 --format '{{json .Mounts}}'
+```
+
+Se espera una aplicación saludable y un montaje de tipo volume hacia
+/var/lib/workflow; ninguna ruta al repositorio ni a SMB. Después de importar,
+la imagen permanece en Docker y la aplicación puede arrancar sin el TAR ni el
+recurso compartido. La alternativa docker run está en el LEEME de entrega.
+
+**El TAR exporta la imagen, no el volumen ni los datos de una instalación.**
+No uses docker export/import para este procedimiento: se necesitan save/load
+para conservar la imagen y su configuración. La transferencia de datos existentes
+se resolverá mediante respaldo/restauración en la fase 5. No se publicó la imagen
+en ningún registro externo.
+
+Referencias: [contexto de construcción](https://docs.docker.com/build/concepts/context/),
+[docker save](https://docs.docker.com/reference/cli/docker/image/save/) y
+[docker load](https://docs.docker.com/reference/cli/docker/image/load/).

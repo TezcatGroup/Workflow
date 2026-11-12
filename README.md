@@ -33,6 +33,23 @@ antes de recrearlo.
 Consulta [la guía Docker](DOCKER_DEPLOYMENT.md) y el
 [informe de persistencia](docker/universidad/FASE3_VALIDACION.md).
 
+## Entrega al profesor sin código fuente
+
+Prepara la imagen TAR siguiendo el [método B de la guía](DOCKER_DEPLOYMENT.md#fase-4--método-b-entregar-una-imagen-sin-repositorio)
+y entrega el TAR junto a los dos archivos de [docker/portable](docker/portable).
+El profesor abre una terminal en la carpeta recibida y copia:
+
+```text
+docker load -i workflow-2026.11.12.tar
+docker compose -p workflow-unico up -d --no-build --pull never --no-recreate
+docker compose -p workflow-unico exec -T app node docker/universidad/access.mjs
+```
+
+No compila ni descarga dependencias. Usa un contenedor y el volumen workflow_data.
+El TAR contiene la aplicación; los datos existentes requieren respaldo aparte.
+Para construir directamente desde SMB, consulta el método A de la misma guía.
+Resultados y límites: [validación de fase 4](docker/universidad/FASE4_VALIDACION.md).
+
 ## Credenciales de demostración
 
 | Servicio | Usuario | Contraseña |
