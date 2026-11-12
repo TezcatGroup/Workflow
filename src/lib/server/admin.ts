@@ -86,6 +86,20 @@ export async function cambiarEstadoUsuario(actor: Admin, id: string, activo: boo
   });
 }
 
+export async function eliminarUsuario(actor: Admin, id: string): Promise<void> {
+  if (!id || id === actor.id) error(400, 'No puedes eliminar tu propia cuenta');
+  await db.transaction(async (tx) => {
+    const [found] = await tx.select({ id: usuarios.id, email: usuarios.email, nombre: usuarios.nombre })
+      .from(usuarios).where(eq(usuarios.id, id)).limit(1);
+    if (!found) error(404, 'Usuario inexistente');
+    await tx.insert(auditoriaUsuarios).values({
+      actorId: actor.id, usuarioObjetivoId: id, accion: 'USUARIO_ELIMINADO',
+      detalle: { email: found.email, nombre: found.nombre }
+    });
+    await tx.delete(usuarios).where(eq(usuarios.id, id));
+  });
+}
+
 export async function crearDepartamento(actor: Admin, nombre: string): Promise<void> {
   if (!nombre || nombre.length > 120) error(400, 'Nombre de departamento inválido');
   await db.transaction(async (tx) => {

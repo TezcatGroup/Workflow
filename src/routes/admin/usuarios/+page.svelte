@@ -144,6 +144,13 @@
               {u.activo ? 'Desactivar cuenta' : 'Reactivar cuenta'}
             </button>
           </form>
+
+          <form method="POST" action="?/eliminar" use:enhance onsubmit={(event) => {
+            if (!confirm(`¿Eliminar definitivamente a ${u.nombre}? Esta acción no se puede deshacer.`)) event.preventDefault();
+          }}>
+            <input type="hidden" name="id" value={u.id} />
+            <button type="submit" class="font-mono text-xs text-red-300 hover:underline">Eliminar usuario</button>
+          </form>
         </article>
       {:else}
         <p class="rounded-xl border border-tezcat-border bg-tezcat-card p-8 text-center text-sm text-tezcat-textSecondary">

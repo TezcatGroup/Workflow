@@ -3,7 +3,7 @@ import { asc, eq } from 'drizzle-orm';
 import type { PageServerLoad } from './$types';
 import { db } from '$lib/server/db';
 import { departamentos, usuarios } from '$lib/server/db/schema';
-import { actualizarUsuario, cambiarEstadoUsuario, crearUsuario, exigirAdmin, campo } from '$lib/server/admin';
+import { actualizarUsuario, cambiarEstadoUsuario, crearUsuario, eliminarUsuario, exigirAdmin, campo } from '$lib/server/admin';
 
 export const load: PageServerLoad = async ({ locals }) => {
   exigirAdmin(locals.user);
@@ -34,5 +34,12 @@ export const actions: Actions = {
       await cambiarEstadoUsuario(actor, campo(form, 'id'), campo(form, 'activo') === 'true');
       return { ok: 'Estado actualizado.' };
     } catch (e) { return fail(400, { error: e instanceof Error ? e.message : 'No se pudo cambiar el estado.' }); }
+  },
+  eliminar: async ({ locals, request }) => {
+    const actor = exigirAdmin(locals.user);
+    try {
+      await eliminarUsuario(actor, campo(await request.formData(), 'id'));
+      return { ok: 'Usuario eliminado.' };
+    } catch (e) { return fail(400, { error: e instanceof Error ? e.message : 'No se pudo eliminar el usuario.' }); }
   }
 };
