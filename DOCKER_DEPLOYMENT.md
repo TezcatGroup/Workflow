@@ -12,7 +12,7 @@ docker compose -p workflow-unico exec -T app node docker/universidad/access.mjs
 ```
 
 No necesitas editar archivos ni instalar Node, pnpm, Python o PostgreSQL.
-La primera ejecución construye la imagen, genera contraseñas aleatorias, crea
+La primera ejecución construye la imagen, configura las credenciales de demostración, crea
 la base de datos y el administrador, aplica migraciones y espera a que la web
 esté lista. La terminal muestra el correo y la contraseña inicial. Abre
 http://localhost:3000. Desde otra máquina de la red usa http://IP_DEL_EQUIPO:3000.
@@ -27,9 +27,12 @@ Docker Compose v2 es requisito (incluido en Docker Desktop).
 
 ## Credenciales y red
 
-La contraseña inicial es única por instalación, de 32 caracteres aleatorios.
+La aplicación y PostgreSQL usan por defecto el usuario `admin@utslp.com` y la
+contraseña `Pass123456`. La base se llama `workflow`. Son credenciales públicas
+para demostración académica, aplicadas al inicializar una instalación nueva.
 Se guarda en `/var/lib/workflow/initial-admin.json`, legible solo por root del
-contenedor. No se incorpora a la imagen, al repositorio ni a los logs.
+contenedor. Los valores predeterminados están publicados en el código y el README. El archivo
+de ejecución no se versiona y el arranque no imprime contraseñas en los logs.
 El comando `access.mjs` la muestra explícitamente en la terminal. Si cambias la
 contraseña en la aplicación, utiliza la nueva; ese archivo no es un restablecimiento.
 Quien administra Docker tiene acceso a los datos del contenedor.

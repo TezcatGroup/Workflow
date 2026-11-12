@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto';
 import postgres from 'postgres';
 
 const base = `http://localhost:${process.env.PORT || 3000}`;
-const sql = postgres({ host: '127.0.0.1', username: 'workflow', database: 'workflow',
+const sql = postgres({ host: '127.0.0.1', username: 'admin@utslp.com', database: 'workflow',
   password: await readFile('/var/lib/workflow/db-password', 'utf8'), max: 1 });
 const request = (path, cookie = '', options = {}) => fetch(base + path, {
   redirect: 'manual', ...options, headers: { origin: process.env.ORIGIN || base,

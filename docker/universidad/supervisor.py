@@ -6,7 +6,6 @@ import os
 import json
 import pathlib
 import pwd
-import secrets
 import signal
 import subprocess
 import sys
@@ -74,9 +73,9 @@ def main():
                     '--auth-host=scram-sha-256', '--encoding=UTF8', '--locale=C.UTF-8'], 'postgres'))
     password_file = ROOT / 'db-password'
     if not password_file.exists():
-        password = os.environ.get('POSTGRES_PASSWORD') or secrets.token_hex(32)
-        if len(password) < 12:
-            raise ValueError('POSTGRES_PASSWORD debe tener al menos 12 caracteres')
+        password = os.environ.get('POSTGRES_PASSWORD') or 'Pass123456'
+        if len(password) < 10:
+            raise ValueError('POSTGRES_PASSWORD debe tener al menos 10 caracteres')
         with open(password_file, 'x', opener=lambda path, flags: os.open(path, flags, 0o600)) as file:
             file.write(password)
     password = password_file.read_text()
@@ -95,16 +94,16 @@ def main():
             break
         time.sleep(0.25)
     literal = "'" + password.replace("'", "''") + "'"
-    psql("SELECT 'CREATE ROLE workflow LOGIN PASSWORD ' || quote_literal(" + literal + ") "
-         "WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'workflow') \\gexec\n"
-         "SELECT 'CREATE DATABASE workflow OWNER workflow' "
+    psql("SELECT 'CREATE ROLE \"admin@utslp.com\" LOGIN PASSWORD ' || quote_literal(" + literal + ") "
+         "WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'admin@utslp.com') \\gexec\n"
+         "SELECT 'CREATE DATABASE workflow OWNER \"admin@utslp.com\"' "
          "WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = 'workflow') \\gexec\n")
     environment = dict(os.environ)
-    environment['DATABASE_URL'] = 'postgresql://workflow:' + quote(password, safe='') + '@127.0.0.1:5432/workflow'
+    environment['DATABASE_URL'] = 'postgresql://admin%40utslp.com:' + quote(password, safe='') + '@127.0.0.1:5432/workflow'
     credentials_file = ROOT / 'initial-admin.json'
     if not credentials_file.exists():
-        credentials = {'email': os.environ.get('ADMIN_EMAIL') or 'admin@workflow.local',
-                       'password': os.environ.get('ADMIN_PASSWORD') or secrets.token_urlsafe(24)}
+        credentials = {'email': os.environ.get('ADMIN_EMAIL') or 'admin@utslp.com',
+                       'password': os.environ.get('ADMIN_PASSWORD') or 'Pass123456'}
         with open(credentials_file, 'x', opener=lambda path, flags: os.open(path, flags, 0o600)) as file:
             json.dump(credentials, file)
     credentials = json.loads(credentials_file.read_text())

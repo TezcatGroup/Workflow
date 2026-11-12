@@ -65,3 +65,15 @@ no se eliminaron volúmenes ni contenedores existentes.
   anterior. No ejecutar down ni force-recreate con datos importantes.
 - Respaldo/restauración, exportación/importación y la batería integral de fase 6
   quedan pendientes de sus fases. Este informe no certifica toda la aplicación.
+
+## Ajuste posterior: credenciales solicitadas
+
+El 12 de noviembre se sustituyó la generación aleatoria inicial por los valores
+públicos de demostración solicitados: admin@utslp.com / Pass123456 para la app y
+el usuario de PostgreSQL. La base continúa llamándose workflow. Las referencias
+a contraseñas aleatorias de las pruebas anteriores describen la revisión previa.
+
+Se reconstruyó la imagen y se probó en un contenedor nuevo sin red: inicio
+con las credenciales exactas, conexión TCP PostgreSQL con ese usuario/contraseña,
+healthcheck, suite funcional y conservación tras reiniciar: aprobados.
+No se restablecieron credenciales ni se recrearon instalaciones existentes.

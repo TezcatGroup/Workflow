@@ -13,8 +13,8 @@ try {
     if ((await tx`SELECT id FROM workflow_universidad_bootstrap WHERE id = 1`).length) return;
     const email = (process.env.ADMIN_EMAIL || '').trim().toLowerCase();
     const password = process.env.ADMIN_PASSWORD || '';
-    if (!email.includes('@') || email === 'admin@local.test' || password.length < 12) {
-      throw new Error('Primera inicialización: define ADMIN_EMAIL válido y ADMIN_PASSWORD de al menos 12 caracteres.');
+    if (!email.includes('@') || email === 'admin@local.test' || password.length < 10) {
+      throw new Error('Primera inicialización: define ADMIN_EMAIL válido y ADMIN_PASSWORD de al menos 10 caracteres.');
     }
     const [existing] = await tx`SELECT rol, activo FROM usuarios WHERE email = ${email}`;
     if (existing && (existing.rol !== 'ADMIN' || !existing.activo)) {

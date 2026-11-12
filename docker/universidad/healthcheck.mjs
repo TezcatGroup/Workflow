@@ -1,7 +1,7 @@
 import postgres from 'postgres';
 import { readFile } from 'node:fs/promises';
 const password = await readFile('/var/lib/workflow/db-password', 'utf8');
-const sql = postgres({ host: '127.0.0.1', username: 'workflow', database: 'workflow', password, connect_timeout: 2, max: 1 });
+const sql = postgres({ host: '127.0.0.1', username: 'admin@utslp.com', database: 'workflow', password, connect_timeout: 2, max: 1 });
 try {
   if (!(await sql`SELECT 1 FROM workflow_universidad_bootstrap WHERE id = 1`).length) {
     throw new Error('Inicialización incompleta');

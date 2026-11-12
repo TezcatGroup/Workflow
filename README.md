@@ -14,8 +14,7 @@ docker compose -p workflow-unico exec -T app node docker/universidad/access.mjs
 ```
 
 El primer comando construye e inicia **un solo contenedor** con la web, el backend
-y PostgreSQL. El segundo espera a que esté listo y muestra las credenciales
-aleatorias. Abre **http://localhost:3000**. No necesitas `.env`, Node, Python,
+y PostgreSQL. El segundo espera a que esté listo y muestra las credenciales de demostración. Abre **http://localhost:3000**. No necesitas `.env`, Node, Python,
 pnpm ni PostgreSQL instalados en el anfitrión.
 
 Desde otra máquina usa `http://IP_DEL_EQUIPO:3000` si el firewall permite el acceso.
@@ -28,6 +27,18 @@ y no actualiza contenedores existentes.
 
 Consulta [la guía Docker](DOCKER_DEPLOYMENT.md) y el
 [informe de pruebas](docker/universidad/FASE2_VALIDACION.md).
+
+## Credenciales de demostración
+
+| Servicio | Usuario | Contraseña |
+| --- | --- | --- |
+| Aplicación (administrador) | `admin@utslp.com` | `Pass123456` |
+| PostgreSQL (base `workflow`) | `admin@utslp.com` | `Pass123456` |
+
+Son credenciales públicas para la evaluación académica. PostgreSQL solo escucha
+dentro del contenedor en el puerto 5432; no se publica al anfitrión.
+Se aplican a instalaciones nuevas. El comando `--no-recreate` conserva el
+contenedor anterior y sus credenciales; no restablece cuentas existentes.
 
 ## Desarrollo y verificación
 
