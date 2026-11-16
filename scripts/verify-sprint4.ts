@@ -198,6 +198,11 @@ try {
   const iniciar = await accion(rutaT1, 'cambiarEstado', [['estado', 'EN_PROCESO']], cResponsable);
   assert.equal(iniciar.status, 200);
   assert.equal(await estadoDe(t1.id), 'EN_PROCESO');
+  assert.equal((await accion(rutaT1, 'cambiarEstado', [['estado', 'EN_REVISION']], cResponsable)).status, 400,
+    'los criterios pendientes impiden enviar a revisión');
+  for (const criterio of criterios) {
+    assert.equal((await accion(rutaT1, 'toggleCriterio', [['criterioId', criterio.id]], cResponsable)).status, 200);
+  }
   const enviar = await accion(rutaT1, 'cambiarEstado', [['estado', 'EN_REVISION']], cResponsable);
   assert.equal(enviar.status, 200);
   assert.equal(await estadoDe(t1.id), 'EN_REVISION');
@@ -255,10 +260,17 @@ try {
   const rutaT3 = `/tareas/${t3.id}`;
   await accion(rutaT3, 'cambiarEstado', [['estado', 'EN_PROCESO']], cResponsable);
   await accion(rutaT3, 'cambiarEstado', [['estado', 'EN_REVISION']], cResponsable);
-  assert.equal((await accion(rutaT3, 'cambiarEstado', [['estado', 'EN_PROCESO']], cEncargado)).status, 200);
+  assert.equal((await accion(rutaT3, 'cambiarEstado', [['estado', 'EN_PROCESO']], cEncargado)).status, 400,
+    'devolver requiere observaciones');
+  assert.equal((await accion(rutaT3, 'cambiarEstado', [['estado', 'EN_PROCESO'], ['observaciones', 'Completar la evidencia']], cEncargado)).status, 200);
   assert.equal(await estadoDe(t3.id), 'EN_PROCESO');
 
   // Finalizar T1 (encargado) y comprobar que TERMINADA es un estado final.
+  assert.equal((await accion(rutaT1, 'cambiarEstado', [['estado', 'TERMINADA']], cEncargado)).status, 400,
+    'aprobar requiere verificar los criterios');
+  for (const criterio of criterios) {
+    assert.equal((await accion(rutaT1, 'toggleCriterio', [['criterioId', criterio.id], ['modo', 'ENCARGADO']], cEncargado)).status, 200);
+  }
   assert.equal((await accion(rutaT1, 'cambiarEstado', [['estado', 'TERMINADA']], cEncargado)).status, 200);
   assert.equal(await estadoDe(t1.id), 'TERMINADA');
   assert.equal((await accion(rutaT1, 'cambiarEstado', [['estado', 'EN_PROCESO']], cEncargado)).status, 400);

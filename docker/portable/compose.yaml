@@ -1,7 +1,7 @@
-# Se entrega junto a workflow-2026.11.12.tar; no necesita el repositorio.
+# Se entrega junto a workflow-2026.11.16.tar; no necesita el repositorio.
 services:
   app:
-    image: workflow:2026.11.12
+    image: workflow:2026.11.16
     pull_policy: never
     restart: unless-stopped
     stop_grace_period: 45s

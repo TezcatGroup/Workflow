@@ -36,11 +36,12 @@ Consulta [la guía Docker](DOCKER_DEPLOYMENT.md) y el
 ## Entrega al profesor sin código fuente
 
 Prepara la imagen TAR siguiendo el [método B de la guía](DOCKER_DEPLOYMENT.md#fase-4--método-b-entregar-una-imagen-sin-repositorio)
-y entrega el TAR junto a los dos archivos de [docker/portable](docker/portable).
+y entrega el TAR junto a los archivos de [docker/portable](docker/portable),
+`DOCKER_DEPLOYMENT.md` y `BACKUP_RECOVERY.md`.
 El profesor abre una terminal en la carpeta recibida y copia:
 
 ```text
-docker load -i workflow-2026.11.12.tar
+docker load -i workflow-2026.11.16.tar
 docker compose -p workflow-unico up -d --no-build --pull never --no-recreate
 docker compose -p workflow-unico exec -T app node docker/universidad/access.mjs
 ```
@@ -50,6 +51,8 @@ El TAR contiene la aplicación; los datos existentes requieren respaldo aparte.
 Para construir directamente desde SMB, consulta el método A de la misma guía.
 Resultados y límites: [validación de fase 4](docker/universidad/FASE4_VALIDACION.md)
 y [prueba real de SMB en Proxmox](docker/universidad/SMB_VALIDACION_VM.md).
+La [validación final](docker/universidad/FASE7_ENTREGA.md) incluye construcción
+desde Windows leyendo la carpeta SMB de la VM y ejecución tras desconectarla.
 
 ## Credenciales de demostración
 
@@ -71,6 +74,11 @@ de integridad y restauración solo a volúmenes vacíos. Consulta
 
 Resultados, errores conocidos y límites de las pruebas integrales:
 [informe de fase 6](docker/universidad/FASE6_VALIDACION.md).
+
+La [validación funcional por roles](FUNCTIONAL_VALIDATION.md) amplía esas pruebas:
+Sprint 4 ya pasa sus diez casos, pero se encontraron dos fallos de canjes
+simultáneos (saldo negativo y reembolso múltiple). La entrega no se declara
+completamente aprobada hasta corregirlos y repetir las pruebas.
 
 ## Desarrollo y verificación
 

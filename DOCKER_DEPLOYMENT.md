@@ -1,5 +1,25 @@
 # Workflow: Docker en un solo contenedor
 
+## Requisitos y conceptos
+
+- Docker funcionando con contenedores Linux y Compose v2. No requiere instalar
+  herramientas de desarrollo ni configurar un archivo .env.
+- Entrega probada: Linux amd64 (Intel/AMD de 64 bits), Docker Desktop en Windows
+  y motor Docker en Debian. macOS y ARM64 no se han validado.
+- Puerto 3000 libre. Internet para construir; la imagen entregada puede iniciarse
+  sin Internet. Docker debe estar instalado previamente.
+- Como punto de partida, reserva 2 GB de RAM para Docker y 5 GB de disco libres,
+  más espacio para datos y respaldos. Son recomendaciones, no mínimos medidos;
+  la compilación y una carga mayor pueden necesitar más recursos.
+
+| Concepto | Qué contiene o hace |
+| --- | --- |
+| Imagen | Aplicación, PostgreSQL y dependencias; se distribuye con docker save/load |
+| Contenedor | Instancia en ejecución de esa imagen; reúne web, backend y base |
+| Volumen | Almacenamiento local administrado por Docker, independiente del contenedor |
+| Datos persistentes | Base, adjuntos y credenciales guardados en workflow_data |
+| Carpeta SMB | Recurso de red para leer código o trasladar el TAR; no almacena la base activa |
+
 ## Inicio automático para el profesor
 
 Con Docker funcionando en modo de contenedores Linux, abre una terminal en la
@@ -161,6 +181,10 @@ docker compose -p workflow-unico logs app
 Se eliminó `./drizzle:/app/drizzle:ro`, una dependencia real de archivos externos.
 Se validó una construcción real sobre CIFS/SMB 3.1.1 de solo lectura en una VM
 Debian de Proxmox; consulta [el informe](docker/universidad/SMB_VALIDACION_VM.md).
+También se construyó e inició desde esta PC Windows leyendo una carpeta SMB
+servida por la VM, mediante ruta UNC y Docker Compose. La aplicación continuó
+funcionando después de detener Samba y desconectar el recurso. Véase la
+[validación de entrega](docker/universidad/FASE7_ENTREGA.md).
 No se ha reproducido el fallo original del profesor. Durante la
 construcción Docker necesita leer el contexto; durante la ejecución no necesita
 la carpeta compartida. Los cambios de permisos se aplican dentro del contenedor.
@@ -178,7 +202,7 @@ configura Samba ni se cambian los permisos del recurso compartido. Abre una
 terminal en la raíz de Workflow dentro de esa carpeta y ejecuta:
 
 ```text
-docker build -t workflow:2026.11.12 .
+docker build -t workflow:2026.11.16 .
 ```
 
 En PowerShell puedes entrar con `Set-Location '\\servidor\recurso\Workflow'`;
@@ -195,7 +219,7 @@ Después de construir, inicia con el volumen administrado, sin montar el recurso
 
 ```text
 docker volume create workflow_data
-docker run -d --name workflow --restart unless-stopped --stop-timeout 45 --mount type=volume,source=workflow_data,target=/var/lib/workflow -p 3000:3000 workflow:2026.11.12
+docker run -d --name workflow --restart unless-stopped --stop-timeout 45 --mount type=volume,source=workflow_data,target=/var/lib/workflow -p 3000:3000 workflow:2026.11.16
 docker exec workflow node docker/universidad/access.mjs
 ```
 
@@ -212,6 +236,10 @@ Si el contexto no puede leerse de forma fiable, usa el método B.
 
 ## Fase 4 — Método B: entregar una imagen, sin repositorio
 
+La entrega actual se identifica como **2026.11.16**, Linux amd64, e incluye las
+herramientas de respaldo. Las referencias a fase 4 describen el método original;
+sus informes conservan los resultados históricos de la versión anterior.
+
 ### Preparación en el equipo que construye
 
 1. Copia o clona la rama Docker en un disco local. Si usas Git:
@@ -226,8 +254,8 @@ Si el contexto no puede leerse de forma fiable, usa el método B.
    En la máquina de construcción, para un receptor Intel/AMD de 64 bits:
 
    ```text
-   docker build --platform linux/amd64 -t workflow:2026.11.12 .
-   docker image inspect workflow:2026.11.12 --format '{{.Os}}/{{.Architecture}}'
+   docker build --platform linux/amd64 -t workflow:2026.11.16 .
+   docker image inspect workflow:2026.11.16 --format '{{.Os}}/{{.Architecture}}'
    ```
 
    Para un receptor ARM64, construye con `--platform linux/arm64`; requiere soporte
@@ -239,7 +267,7 @@ Si el contexto no puede leerse de forma fiable, usa el método B.
    Abre una terminal en esa carpeta y exporta:
 
    ```text
-   docker save -o workflow-2026.11.12.tar workflow:2026.11.12
+   docker save -o workflow-2026.11.16.tar workflow:2026.11.16
    ```
 
    Usa un directorio nuevo y no sobrescribas un TAR anterior. Mantén juntos la
@@ -249,11 +277,11 @@ Si el contexto no puede leerse de forma fiable, usa el método B.
 4. Comprueba el archivo antes y después de transferirlo. En PowerShell:
 
    ```powershell
-   Get-FileHash -Algorithm SHA256 workflow-2026.11.12.tar
+   Get-FileHash -Algorithm SHA256 workflow-2026.11.16.tar
    ```
 
-   En Linux: `sha256sum workflow-2026.11.12.tar`.
-   En macOS: `shasum -a 256 workflow-2026.11.12.tar`.
+   En Linux: `sha256sum workflow-2026.11.16.tar`.
+   En macOS: `shasum -a 256 workflow-2026.11.16.tar`.
    Los hashes deben coincidir. El hash detecta cambios en la transferencia;
    no sustituye la confianza en quien entrega la imagen.
 
@@ -266,7 +294,7 @@ Si el contexto no puede leerse de forma fiable, usa el método B.
 Desde la carpeta recibida, copia este bloque completo. No requiere configuración:
 
 ```text
-docker load -i workflow-2026.11.12.tar
+docker load -i workflow-2026.11.16.tar
 docker compose -p workflow-unico up -d --no-build --pull never --no-recreate
 docker compose -p workflow-unico exec -T app node docker/universidad/access.mjs
 ```
@@ -296,6 +324,42 @@ para conservar la imagen y su configuración. La transferencia de datos existent
 se realiza mediante [respaldo/restauración](BACKUP_RECOVERY.md) con una imagen
 que incluya las herramientas de fase 5. No se publicó la imagen
 en ningún registro externo.
+
+## Actualizar una entrega TAR
+
+Primero verifica el volumen y realiza el respaldo descrito en BACKUP_RECOVERY.md.
+Conserva la imagen anterior junto con su respaldo. Desde la nueva carpeta de
+entrega, con el mismo proyecto y volumen de la instalación original:
+
+```text
+docker load -i workflow-2026.11.16.tar
+docker compose -p workflow-unico up -d --no-build --pull never --force-recreate
+docker compose -p workflow-unico exec -T app node docker/universidad/access.mjs
+```
+
+Detente si load falla. La recreación conserva workflow_data, pero puede aplicar
+migraciones; no garantiza volver a una versión anterior sin restaurar el respaldo.
+El inicio habitual con --no-recreate conserva el contenedor y no lo actualiza.
+
+## Solución de problemas
+
+| Síntoma | Comprobación o solución |
+| --- | --- |
+| No conecta con Docker | Inicia Docker y ejecuta docker info; selecciona contenedores Linux |
+| No reconoce compose | Comprueba docker compose version; necesitas Compose v2 |
+| Puerto 3000 ocupado | Identifica qué aplicación lo utiliza; no detengas servicios ajenos. Puedes cambiar únicamente el puerto del anfitrión en Compose y usarlo en el navegador |
+| Imagen ausente al usar el paquete | Ejecuta docker load y comprueba docker image inspect workflow:2026.11.16 |
+| No inicia o está unhealthy | Ejecuta docker compose -p workflow-unico logs --tail 100 app y conserva el error exacto |
+| Otra instancia usa el volumen | Detén la instancia propietaria antes de iniciar otra; no borres el archivo de bloqueo ni el volumen |
+| Credenciales distintas | Los valores iniciales solo se aplican a una base nueva; el arranque no restablece cuentas |
+| Falla SMB | Comprueba lectura del Dockerfile y permisos desde tu sesión; vuelve a conectar el recurso o utiliza el TAR local |
+| No entra desde otra PC | Prueba primero localhost:3000; revisa IP, red y firewall del anfitrión |
+| Versión de PostgreSQL incompatible o restauración incompleta | Conserva el volumen; consulta el error y BACKUP_RECOVERY.md. No inicialices ni borres sus datos |
+
+El alcance original está documentado en [fase 6](docker/universidad/FASE6_VALIDACION.md).
+La [validación funcional posterior](FUNCTIONAL_VALIDATION.md) actualizó Sprint 4
+y detectó dos fallos de concurrencia en canjes. No se atribuyen a SMB y siguen
+pendientes de corrección.
 
 Referencias: [contexto de construcción](https://docs.docker.com/build/concepts/context/),
 [docker save](https://docs.docker.com/reference/cli/docker/image/save/) y
