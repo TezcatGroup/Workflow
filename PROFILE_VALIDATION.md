@@ -45,6 +45,23 @@ registra las operaciones sin contraseñas ni hashes.
   conservando 23 usuarios (nombres, roles y hashes) y 19 tareas con sus estados.
   La columna de foto inicia vacía en cuentas anteriores.
 
+## Landing y reconciliación con docker-update
+
+La landing publicada estaba en `origin/docker-update`, commit `bb32b4a`, no en
+`main`. Se incorporaron su `src/routes/+page.svelte` y su loader público a Docker.
+La ruta `/` ahora responde 200 sin sesión; los enlaces van a login o al espacio
+correspondiente al rol. Las fuentes también se incluyen en la imagen para
+funcionar sin conexión. Se verificaron los tres roles y el acceso anónimo en
+Chromium, escritorio/móvil, con las solicitudes externas bloqueadas.
+
+Ese mismo commit incluía un borrado básico de usuarios. Se conservaron la única
+acción `eliminar`, el único servicio `eliminarUsuario` y el diálogo actuales:
+confirmación por correo, validación de tareas/canjes pendientes, bloqueo de filas,
+revocación de sesiones, conservación de historial y limpieza de la foto.
+No se añadió el formulario antiguo ni una segunda implementación. La suite de
+eliminación y la comprobación de persistencia volvieron a pasar después de
+incorporar la landing. `pnpm check` volvió a pasar sin errores ni advertencias.
+
 ## Repetir la prueba automatizada
 
 Solo en una instancia aislada con datos sintéticos. Copia el script dentro de

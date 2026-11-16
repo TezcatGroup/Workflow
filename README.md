@@ -88,6 +88,8 @@ desde Usuarios**; no hay edición del nombre desde el perfil personal.
 Las fotos aceptan JPG, PNG o WebP sin animación, hasta 2 MB y 16 megapíxeles;
 se guardan en el volumen persistente y se incluyen en los respaldos.
 Resultados de la revisión r3: [pruebas de perfil](PROFILE_VALIDATION.md).
+La ruta `/` muestra la landing pública existente de `docker-update`; sus enlaces
+llevan al inicio de sesión o al espacio del usuario autenticado.
 
 ## Desarrollo y verificación
 

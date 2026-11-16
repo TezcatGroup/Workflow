@@ -9,7 +9,7 @@ async function download(url) {
   if (!response.ok) throw new Error(`No se pudo descargar ${url}: ${response.status}`);
   return response;
 }
-for (const file of ['src/routes/login/+page.svelte', 'src/lib/components/EncabezadoApp.svelte']) {
+for (const file of ['src/routes/+page.svelte', 'src/routes/login/+page.svelte', 'src/lib/components/EncabezadoApp.svelte']) {
   let source = await readFile(file, 'utf8');
   source = source.replace(/<link\s+rel="preconnect"[^>]*\/>/g, '');
   for (const match of source.matchAll(/https:\/\/fonts\.googleapis\.com\/css2[^"\s]+/g)) {

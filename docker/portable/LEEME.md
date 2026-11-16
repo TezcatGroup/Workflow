@@ -7,6 +7,7 @@ Consulta `FIXES_VALIDATION.md` para resultados, condiciones y límites de las pr
 La revisión r3 añade foto y cambio de contraseña en Perfil para encargados y
 miembros. Los administradores no tienen esos ajustes. Solo el administrador
 puede cambiar nombres desde Usuarios. Consulta `PROFILE_VALIDATION.md`.
+Incluye la landing pública de `docker-update` al abrir la ruta `/`.
 
 Requisitos: Docker funcionando con contenedores Linux y Docker Compose v2.
 La arquitectura de la imagen debe coincidir con la máquina receptora.
