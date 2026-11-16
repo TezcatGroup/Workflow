@@ -183,15 +183,12 @@
     <!-- Encabezado -->
     <div class="mb-6 flex flex-wrap items-end justify-between gap-4">
       <div>
-        <p class="font-mono text-[11px] font-semibold tracking-widest text-tezcat-cyan uppercase">
-          Sprint 6 · Trazabilidad, delegación y conversación
-        </p>
         <h1 class="mt-1 text-2xl font-bold tracking-tight text-white sm:text-3xl">Tareas</h1>
         <p class="mt-1.5 text-xs text-tezcat-textSecondary">
           {#if data.user.rol === 'MIEMBRO'}
             Tareas asignadas a ti, ordenadas por fecha límite.
           {:else if data.user.rol === 'ENCARGADO'}
-            Tareas de tu departamento. Filtra por miembro asignado o abre la línea de tiempo y conversación de cada tarea.
+            Asigna tareas a tu departamento, puedes asignar tareas directamente a los miembros o publicar tareas opcionales.
           {:else}
             Todas las tareas del sistema (solo lectura).
           {/if}
