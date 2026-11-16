@@ -1,7 +1,7 @@
 import { error } from '@sveltejs/kit';
-import { and, eq } from 'drizzle-orm';
+import { and, asc, eq, inArray, ne, or, sql } from 'drizzle-orm';
 import { db } from '$lib/server/db';
-import { auditoriaUsuarios, departamentos, usuarios, rolUsuario } from '$lib/server/db/schema';
+import { auditoriaUsuarios, canjes, departamentos, tareas, usuarios, rolUsuario } from '$lib/server/db/schema';
 import { hashPassword } from '$lib/server/auth';
 
 export type Admin = NonNullable<App.Locals['user']>;
@@ -83,6 +83,40 @@ export async function cambiarEstadoUsuario(actor: Admin, id: string, activo: boo
       actorId: actor.id, usuarioObjetivoId: id,
       accion: activo ? 'USUARIO_ACTIVADO' : 'USUARIO_DESACTIVADO', detalle: {}
     });
+  });
+}
+
+export async function eliminarUsuario(actor: Admin, id: string, confirmacionEmail: string): Promise<void> {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) error(400, 'Identificador de usuario inválido');
+  if (id === actor.id) error(400, 'No puedes eliminar tu propia cuenta');
+  await db.transaction(async (tx) => {
+    // Orden estable: también impide que dos administradores se eliminen mutuamente.
+    const cuentas = await tx.select({ id: usuarios.id, nombre: usuarios.nombre, email: usuarios.email,
+      rol: usuarios.rol, activo: usuarios.activo }).from(usuarios)
+      .where(inArray(usuarios.id, [actor.id, id])).orderBy(asc(usuarios.id)).for('update');
+    const administrador = cuentas.find(u => u.id === actor.id);
+    if (!administrador?.activo || administrador.rol !== 'ADMIN') error(403, 'Tu cuenta ya no tiene permisos de administración');
+    const objetivo = cuentas.find(u => u.id === id);
+    if (!objetivo) error(404, 'La cuenta ya no existe');
+    if (confirmacionEmail.trim().toLowerCase() !== objetivo.email.toLowerCase()) error(400, 'Escribe el correo de la cuenta para confirmar la eliminación');
+    const [pendiente] = await tx.select({ id: tareas.id }).from(tareas).where(and(
+      ne(tareas.estado, 'TERMINADA'), or(eq(tareas.responsableId, id), eq(tareas.revisorId, id))
+    )).limit(1);
+    if (pendiente) error(400, 'Esta cuenta tiene tareas pendientes como responsable o revisor. Reasígnalas o finalízalas antes de eliminarla. Puedes desactivar la cuenta mientras tanto.');
+    const [canje] = await tx.select({ id: canjes.id }).from(canjes)
+      .where(and(eq(canjes.usuarioId, id), eq(canjes.estado, 'PENDIENTE'))).limit(1);
+    if (canje) error(400, 'Esta cuenta tiene canjes pendientes. Entrégalos o cancélalos antes de eliminarla.');
+    // Las FK conservan tareas/mensajes/adjuntos y anulan su referencia al usuario.
+    // Sesiones y datos personales de gamificación se eliminan en cascada.
+    const identidad = { id: objetivo.id, nombre: objetivo.nombre, email: objetivo.email, rol: objetivo.rol };
+    // Conserva la identidad auditable antes de que las FK se pongan a null.
+    await tx.update(auditoriaUsuarios).set({ detalle: sql`${auditoriaUsuarios.detalle} || ${JSON.stringify({ actorEliminado: identidad })}::jsonb` })
+      .where(eq(auditoriaUsuarios.actorId, id));
+    await tx.update(auditoriaUsuarios).set({ detalle: sql`${auditoriaUsuarios.detalle} || ${JSON.stringify({ usuarioEliminado: identidad })}::jsonb` })
+      .where(eq(auditoriaUsuarios.usuarioObjetivoId, id));
+    await tx.delete(usuarios).where(eq(usuarios.id, id));
+    await tx.insert(auditoriaUsuarios).values({ actorId: actor.id, accion: 'USUARIO_ELIMINADO',
+      detalle: { usuarioEliminado: identidad } });
   });
 }
 

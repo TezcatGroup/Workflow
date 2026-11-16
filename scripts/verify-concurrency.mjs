@@ -30,6 +30,33 @@ try{
   assert.equal(after-before,c.puntos_gastados,JSON.stringify({before,after,cost:c.puntos_gastados,statuses:responses.map(r=>r.status)}));
   return {before,after};
  });
+ await test('Tienda y perfil comparten el bloqueo de saldo',async()=>{
+  const rs=[];
+  for(let i=0;i<8;i++)rs.push((await sql`insert into recompensas(nombre,costo_puntos,stock) values(${`QA mixto ${uid} ${i}`},40,1) returning id`)[0]);
+  const responses=await Promise.all(rs.map((r,i)=>action(i%2?'/perfil':'/tienda','canjear',member,{recompensaId:r.id})));
+  const balance=Number((await sql`select sum(cantidad) n from movimientos_puntos where usuario_id=${uid}`)[0].n);
+  assert.equal(balance,0);assert.equal(responses.filter(r=>r.status===200).length,1);return {balance};
+ });
+ await test('Entregar y cancelar simultáneamente solo resuelven una vez',async()=>{
+  const [c]=await sql`select * from canjes where usuario_id=${uid} and estado='PENDIENTE' limit 1`;assert.ok(c);
+  const before=Number((await sql`select sum(cantidad) n from movimientos_puntos where usuario_id=${uid}`)[0].n);
+  const responses=await Promise.all(Array.from({length:8},(_,i)=>action('/admin/recompensas','resolverCanje',admin,{canjeId:c.id,accion:i%2?'CANCELAR':'ENTREGAR'})));
+  assert.equal(responses.filter(r=>r.status===200).length,1);
+  const [after]=await sql`select estado from canjes where id=${c.id}`;
+  const balance=Number((await sql`select sum(cantidad) n from movimientos_puntos where usuario_id=${uid}`)[0].n);
+  assert.equal(balance-before,after.estado==='CANCELADO'?c.puntos_gastados:0);
+  assert.equal((await sql`select * from auditoria_usuarios where detalle->>'canjeId'=${c.id} and accion in ('CANJE_ENTREGADO','CANJE_CANCELADO')`).length,1);
+  return {estado:after.estado,balance};
+ });
+ await test('Cancelar canjes distintos del mismo artículo recupera todo el stock',async()=>{
+  await sql`insert into movimientos_puntos(usuario_id,cantidad,motivo) values(${uid},200,'QA stock concurrente')`;
+  const [r]=await sql`insert into recompensas(nombre,costo_puntos,stock) values('QA stock compartido',40,10) returning id`;
+  for(let i=0;i<3;i++)assert.equal((await action('/tienda','canjear',member,{recompensaId:r.id})).status,200);
+  const cs=await sql`select id from canjes where recompensa_id=${r.id}`;
+  const responses=await Promise.all(cs.map(c=>action('/admin/recompensas','resolverCanje',admin,{canjeId:c.id,accion:'CANCELAR'})));
+  assert.ok(responses.every(r=>r.status===200));assert.equal((await sql`select stock from recompensas where id=${r.id}`)[0].stock,10);
+  return {stock:10};
+ });
  await writeFile(process.env.TEST_CONCURRENCY_REPORT||'/tmp/concurrency-report.json',JSON.stringify(results,null,2));
  if(results.some(r=>r.status==='FAIL'))process.exitCode=1;
 }finally{await sql.end();}

@@ -1,9 +1,8 @@
 # Workflow para el profesor
 
-Estado de validación: los flujos individuales probados funcionan, pero hay dos
-fallos pendientes en canjes simultáneos. Consulta `FUNCTIONAL_VALIDATION.md`.
-Este paquete permite evaluar la aplicación; no representa una aprobación sin
-incidencias de todas sus funcionalidades.
+Esta revisión corrige los dos fallos de canjes simultáneos, completa las pantallas
+de Departamentos, Auditoría y Mi equipo, y permite eliminar cuentas desde Usuarios.
+Consulta `FIXES_VALIDATION.md` para resultados, condiciones y límites de las pruebas.
 
 Requisitos: Docker funcionando con contenedores Linux y Docker Compose v2.
 La arquitectura de la imagen debe coincidir con la máquina receptora.
@@ -11,11 +10,11 @@ Este paquete es Linux amd64 (Intel/AMD de 64 bits); ARM64 y macOS no se probaron
 No necesitas código fuente, Node, Python, PostgreSQL ni un archivo .env.
 
 Copia esta carpeta a un disco local. Debe contener `compose.yaml` y
-`workflow-2026.11.16.tar`. Desde esa carpeta ejecuta este bloque completo,
+`workflow-2026.11.16-r2.tar`. Desde esa carpeta ejecuta este bloque completo,
 igual en PowerShell, Linux o macOS:
 
 ```text
-docker load -i workflow-2026.11.16.tar
+docker load -i workflow-2026.11.16-r2.tar
 docker compose -p workflow-unico up -d --no-build --pull never --no-recreate
 docker compose -p workflow-unico exec -T app node docker/universidad/access.mjs
 ```
@@ -32,7 +31,7 @@ la imagen ya cargada; conserva compose.yaml para administrar la instalación.
 
 Si un comando falla, resuelve ese error antes de ejecutar el siguiente. Si falta
 la imagen, comprueba que docker load terminó y repite `docker image inspect
-workflow:2026.11.16`. Si el puerto 3000 está ocupado, no detengas servicios ajenos.
+workflow:2026.11.16-r2`. Si el puerto 3000 está ocupado, no detengas servicios ajenos.
 
 ## Instalaciones existentes
 
@@ -67,7 +66,7 @@ antigua sin revisar sus datos:
 
 ```text
 docker volume create workflow_data
-docker run -d --name workflow --restart unless-stopped --stop-timeout 45 --mount type=volume,source=workflow_data,target=/var/lib/workflow -p 3000:3000 workflow:2026.11.16
+docker run -d --name workflow --restart unless-stopped --stop-timeout 45 --mount type=volume,source=workflow_data,target=/var/lib/workflow -p 3000:3000 workflow:2026.11.16-r2
 docker exec workflow node docker/universidad/access.mjs
 ```
 

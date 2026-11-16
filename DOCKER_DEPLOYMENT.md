@@ -202,7 +202,7 @@ configura Samba ni se cambian los permisos del recurso compartido. Abre una
 terminal en la raíz de Workflow dentro de esa carpeta y ejecuta:
 
 ```text
-docker build -t workflow:2026.11.16 .
+docker build -t workflow:2026.11.16-r2 .
 ```
 
 En PowerShell puedes entrar con `Set-Location '\\servidor\recurso\Workflow'`;
@@ -219,7 +219,7 @@ Después de construir, inicia con el volumen administrado, sin montar el recurso
 
 ```text
 docker volume create workflow_data
-docker run -d --name workflow --restart unless-stopped --stop-timeout 45 --mount type=volume,source=workflow_data,target=/var/lib/workflow -p 3000:3000 workflow:2026.11.16
+docker run -d --name workflow --restart unless-stopped --stop-timeout 45 --mount type=volume,source=workflow_data,target=/var/lib/workflow -p 3000:3000 workflow:2026.11.16-r2
 docker exec workflow node docker/universidad/access.mjs
 ```
 
@@ -236,7 +236,7 @@ Si el contexto no puede leerse de forma fiable, usa el método B.
 
 ## Fase 4 — Método B: entregar una imagen, sin repositorio
 
-La entrega actual se identifica como **2026.11.16**, Linux amd64, e incluye las
+La entrega actual se identifica como **2026.11.16-r2**, Linux amd64, e incluye las
 herramientas de respaldo. Las referencias a fase 4 describen el método original;
 sus informes conservan los resultados históricos de la versión anterior.
 
@@ -254,8 +254,8 @@ sus informes conservan los resultados históricos de la versión anterior.
    En la máquina de construcción, para un receptor Intel/AMD de 64 bits:
 
    ```text
-   docker build --platform linux/amd64 -t workflow:2026.11.16 .
-   docker image inspect workflow:2026.11.16 --format '{{.Os}}/{{.Architecture}}'
+   docker build --platform linux/amd64 -t workflow:2026.11.16-r2 .
+   docker image inspect workflow:2026.11.16-r2 --format '{{.Os}}/{{.Architecture}}'
    ```
 
    Para un receptor ARM64, construye con `--platform linux/arm64`; requiere soporte
@@ -267,7 +267,7 @@ sus informes conservan los resultados históricos de la versión anterior.
    Abre una terminal en esa carpeta y exporta:
 
    ```text
-   docker save -o workflow-2026.11.16.tar workflow:2026.11.16
+   docker save -o workflow-2026.11.16-r2.tar workflow:2026.11.16-r2
    ```
 
    Usa un directorio nuevo y no sobrescribas un TAR anterior. Mantén juntos la
@@ -277,11 +277,11 @@ sus informes conservan los resultados históricos de la versión anterior.
 4. Comprueba el archivo antes y después de transferirlo. En PowerShell:
 
    ```powershell
-   Get-FileHash -Algorithm SHA256 workflow-2026.11.16.tar
+   Get-FileHash -Algorithm SHA256 workflow-2026.11.16-r2.tar
    ```
 
-   En Linux: `sha256sum workflow-2026.11.16.tar`.
-   En macOS: `shasum -a 256 workflow-2026.11.16.tar`.
+   En Linux: `sha256sum workflow-2026.11.16-r2.tar`.
+   En macOS: `shasum -a 256 workflow-2026.11.16-r2.tar`.
    Los hashes deben coincidir. El hash detecta cambios en la transferencia;
    no sustituye la confianza en quien entrega la imagen.
 
@@ -294,7 +294,7 @@ sus informes conservan los resultados históricos de la versión anterior.
 Desde la carpeta recibida, copia este bloque completo. No requiere configuración:
 
 ```text
-docker load -i workflow-2026.11.16.tar
+docker load -i workflow-2026.11.16-r2.tar
 docker compose -p workflow-unico up -d --no-build --pull never --no-recreate
 docker compose -p workflow-unico exec -T app node docker/universidad/access.mjs
 ```
@@ -332,7 +332,7 @@ Conserva la imagen anterior junto con su respaldo. Desde la nueva carpeta de
 entrega, con el mismo proyecto y volumen de la instalación original:
 
 ```text
-docker load -i workflow-2026.11.16.tar
+docker load -i workflow-2026.11.16-r2.tar
 docker compose -p workflow-unico up -d --no-build --pull never --force-recreate
 docker compose -p workflow-unico exec -T app node docker/universidad/access.mjs
 ```
@@ -348,7 +348,7 @@ El inicio habitual con --no-recreate conserva el contenedor y no lo actualiza.
 | No conecta con Docker | Inicia Docker y ejecuta docker info; selecciona contenedores Linux |
 | No reconoce compose | Comprueba docker compose version; necesitas Compose v2 |
 | Puerto 3000 ocupado | Identifica qué aplicación lo utiliza; no detengas servicios ajenos. Puedes cambiar únicamente el puerto del anfitrión en Compose y usarlo en el navegador |
-| Imagen ausente al usar el paquete | Ejecuta docker load y comprueba docker image inspect workflow:2026.11.16 |
+| Imagen ausente al usar el paquete | Ejecuta docker load y comprueba docker image inspect workflow:2026.11.16-r2 |
 | No inicia o está unhealthy | Ejecuta docker compose -p workflow-unico logs --tail 100 app y conserva el error exacto |
 | Otra instancia usa el volumen | Detén la instancia propietaria antes de iniciar otra; no borres el archivo de bloqueo ni el volumen |
 | Credenciales distintas | Los valores iniciales solo se aplican a una base nueva; el arranque no restablece cuentas |
@@ -358,8 +358,8 @@ El inicio habitual con --no-recreate conserva el contenedor y no lo actualiza.
 
 El alcance original está documentado en [fase 6](docker/universidad/FASE6_VALIDACION.md).
 La [validación funcional posterior](FUNCTIONAL_VALIDATION.md) actualizó Sprint 4
-y detectó dos fallos de concurrencia en canjes. No se atribuyen a SMB y siguen
-pendientes de corrección.
+y detectó dos fallos de concurrencia en canjes. Ambos están corregidos en r2;
+consulta [las pruebas de regresión y cambios de interfaz](FIXES_VALIDATION.md).
 
 Referencias: [contexto de construcción](https://docs.docker.com/build/concepts/context/),
 [docker save](https://docs.docker.com/reference/cli/docker/image/save/) y

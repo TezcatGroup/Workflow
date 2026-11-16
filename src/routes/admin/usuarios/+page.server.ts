@@ -1,9 +1,9 @@
-import { fail, type Actions } from '@sveltejs/kit';
+import { fail, isHttpError, type Actions } from '@sveltejs/kit';
 import { asc, eq } from 'drizzle-orm';
 import type { PageServerLoad } from './$types';
 import { db } from '$lib/server/db';
 import { departamentos, usuarios } from '$lib/server/db/schema';
-import { actualizarUsuario, cambiarEstadoUsuario, crearUsuario, exigirAdmin, campo } from '$lib/server/admin';
+import { actualizarUsuario, cambiarEstadoUsuario, crearUsuario, eliminarUsuario, exigirAdmin, campo } from '$lib/server/admin';
 
 export const load: PageServerLoad = async ({ locals }) => {
   exigirAdmin(locals.user);
@@ -17,6 +17,17 @@ export const load: PageServerLoad = async ({ locals }) => {
 };
 
 export const actions: Actions = {
+  eliminar: async ({ locals, request }) => {
+    const actor = exigirAdmin(locals.user);
+    const form = await request.formData();
+    try {
+      await eliminarUsuario(actor, campo(form, 'id'), campo(form, 'confirmacionEmail'));
+      return { ok: 'Cuenta eliminada. Su acceso fue revocado y la operación quedó registrada en auditoría.' };
+    } catch (e) {
+      if (isHttpError(e)) return fail(e.status, { error: e.body.message });
+      return fail(500, { error: 'No se pudo eliminar la cuenta. Inténtalo de nuevo.' });
+    }
+  },
   crear: async ({ locals, request }) => {
     const actor = exigirAdmin(locals.user);
     try { await crearUsuario(actor, await request.formData()); return { ok: 'Usuario creado.' }; }

@@ -2,6 +2,11 @@
 
 ## Resultado
 
+**Actualización:** los fallos F-01 y F-02 reproducidos abajo fueron corregidos en
+2026.11.16-r2. Sus cinco pruebas de regresión pasan. Consulta
+[las correcciones y su validación](FIXES_VALIDATION.md). Lo que sigue conserva
+los resultados históricos sobre la imagen 2026.11.16 anterior.
+
 La aplicación **no está completamente aprobada**: se reprodujeron dos errores
 de concurrencia en canjes. Las pruebas de operaciones individuales y los flujos
 descritos abajo pasaron. No se modificó la lógica de negocio para ocultar fallos.

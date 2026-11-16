@@ -13,7 +13,8 @@ import {
   ramas,
   recompensas,
   tareaEtiquetas,
-  tareas
+  tareas,
+  usuarios
 } from '$lib/server/db/schema';
 import { campo } from '$lib/server/admin';
 
@@ -352,6 +353,8 @@ export const actions: Actions = {
 
     try {
       const nombreRecompensa = await db.transaction(async (tx) => {
+        // Serializa los descuentos del mismo usuario, incluso entre artículos y rutas distintos.
+        await tx.select({ id: usuarios.id }).from(usuarios).where(eq(usuarios.id, user.id)).for('update');
         // 1. Bloquear la fila de la recompensa para evitar condiciones de carrera con el stock
         const [rec] = await tx
           .select()

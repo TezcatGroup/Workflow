@@ -217,7 +217,8 @@ export const actions: Actions = {
 
     try {
       await db.transaction(async (tx) => {
-        const [canje] = await tx.select().from(canjes).where(eq(canjes.id, canjeId)).limit(1);
+        // Una sola resolución puede observar PENDIENTE; las demás esperan y vuelven a comprobarlo.
+        const [canje] = await tx.select().from(canjes).where(eq(canjes.id, canjeId)).limit(1).for('update');
         if (!canje) throw new Error('Canje no encontrado en la base de datos.');
         if (canje.estado !== 'PENDIENTE') throw new Error('Este canje ya fue resuelto previamente.');
 
@@ -255,7 +256,7 @@ export const actions: Actions = {
             const [rec] = await tx
               .select({ stock: recompensas.stock })
               .from(recompensas)
-              .where(eq(recompensas.id, canje.recompensaId));
+              .where(eq(recompensas.id, canje.recompensaId)).for('update');
             if (rec && rec.stock !== null) {
               await tx
                 .update(recompensas)

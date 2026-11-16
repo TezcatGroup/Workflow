@@ -6,7 +6,8 @@ import {
   canjes,
   movimientosPuntos,
   movimientosXp,
-  recompensas
+  recompensas,
+  usuarios
 } from '$lib/server/db/schema';
 import { campo } from '$lib/server/admin';
 
@@ -102,6 +103,8 @@ export const actions: Actions = {
 
     try {
       const resultado = await db.transaction(async (tx) => {
+        // Serializa los descuentos del mismo usuario, incluso entre artículos y rutas distintos.
+        await tx.select({ id: usuarios.id }).from(usuarios).where(eq(usuarios.id, user.id)).for('update');
         // 1. Verificar recompensa activa y bloquear fila para evitar condición de carrera en stock
         const [rec] = await tx
           .select()

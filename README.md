@@ -41,7 +41,7 @@ y entrega el TAR junto a los archivos de [docker/portable](docker/portable),
 El profesor abre una terminal en la carpeta recibida y copia:
 
 ```text
-docker load -i workflow-2026.11.16.tar
+docker load -i workflow-2026.11.16-r2.tar
 docker compose -p workflow-unico up -d --no-build --pull never --no-recreate
 docker compose -p workflow-unico exec -T app node docker/universidad/access.mjs
 ```
@@ -75,10 +75,11 @@ de integridad y restauración solo a volúmenes vacíos. Consulta
 Resultados, errores conocidos y límites de las pruebas integrales:
 [informe de fase 6](docker/universidad/FASE6_VALIDACION.md).
 
-La [validación funcional por roles](FUNCTIONAL_VALIDATION.md) amplía esas pruebas:
-Sprint 4 ya pasa sus diez casos, pero se encontraron dos fallos de canjes
-simultáneos (saldo negativo y reembolso múltiple). La entrega no se declara
-completamente aprobada hasta corregirlos y repetir las pruebas.
+La [validación funcional por roles](FUNCTIONAL_VALIDATION.md) amplía esas pruebas.
+Los fallos de saldo negativo y reembolso múltiple ya están corregidos en r2:
+[correcciones, pantallas completadas y pruebas](FIXES_VALIDATION.md).
+Usuarios permite eliminar cuentas con confirmación del correo; el servidor
+rechaza eliminar la cuenta propia o cuentas con tareas/canjes pendientes.
 
 ## Desarrollo y verificación
 
