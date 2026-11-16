@@ -1,122 +1,88 @@
 # Tezcat Workflow
 
-Plataforma de proyectos y tareas con SvelteKit y PostgreSQL 16.
+## Abrir la aplicación con Docker
 
-## Iniciar sin configurar nada
+Con Docker iniciado en modo **contenedores Linux** y **Docker Compose v2**, abre
+una terminal en la carpeta del proyecto donde está `docker-compose.yml`. Puede
+ser una carpeta local o una carpeta SMB a la que tengas acceso de lectura.
+Necesitas internet para la primera construcción.
 
-Con Docker funcionando, abre una terminal en esta carpeta y copia este bloque.
-Funciona con los mismos comandos en PowerShell, Linux y macOS (Docker Compose v2,
-motor Linux):
+Copia y ejecuta este bloque, igual en PowerShell, Linux o macOS:
 
 ```text
 docker compose -p workflow-unico up -d --build --no-recreate
 docker compose -p workflow-unico exec -T app node docker/universidad/access.mjs
 ```
 
-El primer comando construye e inicia **un solo contenedor** con la web, el backend
-y PostgreSQL. El segundo espera a que esté listo y muestra las credenciales de demostración. Abre **http://localhost:3000**. No necesitas `.env`, Node, Python,
-pnpm ni PostgreSQL instalados en el anfitrión.
-
-Desde otra máquina usa `http://IP_DEL_EQUIPO:3000` si el firewall permite el acceso.
-Repetir el bloque reutiliza el contenedor sin restablecer sus datos o contraseña.
-Las migraciones están en la imagen; no se monta el repositorio ni SMB.
-
-**Persistencia:** las instalaciones nuevas guardan PostgreSQL, credenciales y
-adjuntos en el volumen Docker `workflow_data`. Los datos sobreviven a la
-recreación si se reutiliza ese volumen. No elimines el volumen. El bloque usa
-`--no-recreate` y no actualiza contenedores anteriores automáticamente.
-
-Si ya tenías un contenedor de fase 2 sin volumen, conserva ese contenedor:
-esta versión no copia ni migra sus datos automáticamente. Consulta la guía
-antes de recrearlo.
-
-Consulta [la guía Docker](DOCKER_DEPLOYMENT.md) y el
-[informe de persistencia](docker/universidad/FASE3_VALIDACION.md).
-
-## Entrega al profesor sin código fuente
-
-Prepara la imagen TAR siguiendo el [método B de la guía](DOCKER_DEPLOYMENT.md#fase-4--método-b-entregar-una-imagen-sin-repositorio)
-y entrega el TAR junto a los archivos de [docker/portable](docker/portable),
-`DOCKER_DEPLOYMENT.md` y `BACKUP_RECOVERY.md`.
-El profesor abre una terminal en la carpeta recibida y copia:
-
-```text
-docker load -i workflow-2026.11.16-r3.tar
-docker compose -p workflow-unico up -d --no-build --pull never --no-recreate
-docker compose -p workflow-unico exec -T app node docker/universidad/access.mjs
-```
-
-No compila ni descarga dependencias. Usa un contenedor y el volumen workflow_data.
-El TAR contiene la aplicación; los datos existentes requieren respaldo aparte.
-Para construir directamente desde SMB, consulta el método A de la misma guía.
-Resultados y límites: [validación de fase 4](docker/universidad/FASE4_VALIDACION.md)
-y [prueba real de SMB en Proxmox](docker/universidad/SMB_VALIDACION_VM.md).
-La [validación final](docker/universidad/FASE7_ENTREGA.md) incluye construcción
-desde Windows leyendo la carpeta SMB de la VM y ejecución tras desconectarla.
-
-## Credenciales de demostración
+Si el primer comando falla, resuelve el error antes de ejecutar el segundo.
+Cuando el segundo muestre que la aplicación está lista, abre **http://localhost:3000**.
+Verás la landing; pulsa **Iniciar sesión** y utiliza estas credenciales:
 
 | Servicio | Usuario | Contraseña |
 | --- | --- | --- |
 | Aplicación (administrador) | `admin@utslp.com` | `Pass123456` |
 | PostgreSQL (base `workflow`) | `admin@utslp.com` | `Pass123456` |
 
-Son credenciales públicas para la evaluación académica. PostgreSQL solo escucha
-dentro del contenedor en el puerto 5432; no se publica al anfitrión.
-Se aplican a instalaciones nuevas. El comando `--no-recreate` conserva el
-contenedor anterior y sus credenciales; no restablece cuentas existentes.
+Son credenciales de demostración para la evaluación académica y se crean en
+instalaciones nuevas. No se restablecen contraseñas de cuentas existentes.
 
-## Respaldos y recuperación
+Se ejecuta **un solo contenedor** con la web, el backend y PostgreSQL 16.
+Las migraciones y la creación del administrador son automáticas. No necesitas
+configurar `.env` ni instalar Node, pnpm, Python o PostgreSQL en tu equipo.
+El puerto 3000 debe estar disponible; PostgreSQL no publica su puerto.
 
-La imagen incluye un respaldo completo con la aplicación detenida, validación
-de integridad y restauración solo a volúmenes vacíos. Consulta
-[BACKUP_RECOVERY.md](BACKUP_RECOVERY.md) para los comandos y la prueba de recuperación.
+## Carpeta SMB y datos persistentes
 
-Resultados, errores conocidos y límites de las pruebas integrales:
-[informe de fase 6](docker/universidad/FASE6_VALIDACION.md).
+Docker lee el proyecto desde SMB únicamente para construir la imagen. La
+aplicación se ejecuta dentro del contenedor y no necesita la carpeta compartida
+una vez construida. No instala dependencias ni ejecuta la base de datos sobre SMB.
 
-La [validación funcional por roles](FUNCTIONAL_VALIDATION.md) amplía esas pruebas.
-Los fallos de saldo negativo y reembolso múltiple ya están corregidos en r2:
-[correcciones, pantallas completadas y pruebas](FIXES_VALIDATION.md).
-Usuarios permite eliminar cuentas con confirmación del correo; el servidor
-rechaza eliminar la cuenta propia o cuentas con tareas/canjes pendientes.
+La base, los adjuntos, las fotos y las credenciales se guardan automáticamente en
+el volumen local de Docker **`workflow_data`**. Se conservan al recrear el
+contenedor con ese mismo volumen. No elimines el volumen ni uses `down -v`.
+Para acceder desde otro equipo, abre `http://IP_DEL_EQUIPO:3000` si su firewall
+permite la conexión.
 
-En **Perfil**, encargados y miembros pueden subir/quitar su foto y cambiar su
-contraseña indicando la actual. El cambio cierra todas sus sesiones. Los
-administradores no tienen estos ajustes. **Solo ADMIN puede cambiar nombres,
-desde Usuarios**; no hay edición del nombre desde el perfil personal.
-Las fotos aceptan JPG, PNG o WebP sin animación, hasta 2 MB y 16 megapíxeles;
-se guardan en el volumen persistente y se incluyen en los respaldos.
-Resultados de la revisión r3: [pruebas de perfil](PROFILE_VALIDATION.md).
-La ruta `/` muestra la landing pública existente de `docker-update`; sus enlaces
-llevan al inicio de sesión o al espacio del usuario autenticado.
+Se probó construir desde una carpeta SMB de una VM y ejecutar en Docker Desktop
+para Windows con Linux amd64. ARM64, macOS y otras configuraciones SMB no se han
+validado. La [evidencia de SMB](docker/universidad/FASE7_ENTREGA.md) indica la
+versión probada; los cambios posteriores se documentan en sus informes.
 
-## Desarrollo y verificación
+## Volver a abrir o actualizar
 
-Para desarrollo se necesitan Node.js 22, pnpm 11 y un PostgreSQL independiente.
-Configura DATABASE_URL, instala con `pnpm install --frozen-lockfile`, aplica
-`pnpm db:migrate` y crea el administrador con `pnpm db:bootstrap` (requiere
-ADMIN_EMAIL y ADMIN_PASSWORD). Este comando ya no restablece cuentas existentes.
-`pnpm dev` inicia Vite; `pnpm check` valida Svelte y `pnpm build` compila.
-Las suites `pnpm test`, `pnpm test:sprint4` y `pnpm test:muro` necesitan una base
-y aplicación de prueba; no deben ejecutarse sobre datos reales.
+Repetir el bloque inicial reutiliza el contenedor existente y conserva los datos.
+**`--no-recreate` no actualiza un contenedor anterior**, aunque el código del
+repositorio haya cambiado. Los cambios del proyecto requieren reconstruir la
+imagen y recrear el contenedor para aplicarse.
 
-## Funciones del sprint
+Para instalar una versión nueva con datos existentes, sigue la
+[guía de actualización con volumen](DOCKER_DEPLOYMENT.md#actualizar-o-recrear-una-instalación-con-volumen)
+y realiza primero un [respaldo](BACKUP_RECOVERY.md). Si tu instalación anterior
+no tiene volumen, consulta esa guía antes de recrearla.
 
-- TW-01: contraseñas Argon2id, bloqueo temporal tras cinco intentos fallidos, sesiones con token aleatorio y hash almacenado en la base, cookie HttpOnly/SameSite, revocación al cerrar sesión y rechazo de cuentas inactivas.
-- TW-02: alta, edición y activación/desactivación de usuarios; roles ADMIN, ENCARGADO y MIEMBRO; alta y edición de departamentos; auditoría transaccional de cambios. Solo ADMIN ejecuta acciones administrativas.
-- TW-03: loader de servidor con widgets y métricas filtradas por rol. El encargado ve solo el conteo de cuentas activas de su departamento.
+Docker mantiene el mismo método de construcción desde SMB cuando cambia el
+proyecto, siempre que el código, las dependencias y las migraciones sigan siendo
+compatibles con la imagen. Los cambios también necesitan compilarse y probarse.
 
-Las métricas de tareas y proyectos pertenecen a sprints posteriores, cuando existan esas tablas y reglas de autorización por recurso.
+## Funciones
 
-## Etiquetas y muro de tareas opcionales
+- Landing pública, acceso por roles y gestión de tareas, muro, revisiones,
+  adjuntos, notificaciones y recompensas.
+- Administración de usuarios, departamentos, etiquetas y auditoría.
+  La eliminación de cuentas requiere confirmar el correo y resolver primero
+  sus tareas o canjes pendientes; conserva el historial.
+- En Perfil, encargados y miembros pueden subir o quitar su foto y cambiar su
+  contraseña indicando la actual. El cambio cierra todas sus sesiones.
+  ADMIN no tiene esos ajustes. **Solo ADMIN puede cambiar nombres desde Usuarios.**
+- Fotos JPG, PNG o WebP sin animación, hasta 2 MB y 16 megapíxeles, incluidas
+  en el volumen persistente y en los respaldos.
 
-La migración `0007_etiquetas_muro` crea el catálogo de etiquetas por departamento y su relación con las tareas. Se aplica con `pnpm db:migrate` o automáticamente al arrancar el contenedor Docker. Conserva los datos existentes.
+## Documentación
 
-El administrador crea, edita y desactiva etiquetas persistentes. El encargado publica tareas opcionales sin responsable y selecciona etiquetas activas de su departamento. En `/muro`, los miembros del mismo departamento pueden leer la descripción completa y tomar una tarea; los encargados pueden convertirla en obligatoria eligiendo un miembro activo. Las tareas tomadas o convertidas salen del muro y aparecen en las tareas del responsable. La asignación y su evento se guardan en una transacción que impide asignaciones simultáneas.
-
-Para verificar estos flujos con una instancia local en ejecución, define `DATABASE_URL` y opcionalmente `TEST_BASE_URL` (por defecto `http://localhost:3001`) y ejecuta `pnpm test:muro`. La prueba crea cuentas y departamentos temporales y los elimina al terminar; cubre persistencia, permisos, aislamiento entre departamentos y concurrencia.
-
-Documentación detallada: [Cambios de etiquetas y muro](docs/cambios-etiquetas-muro.md).
-
-Las tareas opcionales permiten definir EXP y monedas. El detalle muestra sus etiquetas, recompensas e información adicional. Al aprobar la tarea se acreditan los importes una sola vez al responsable; el usuario consulta sus saldos en `/perfil`. Se reutilizan las tablas existentes de movimientos, sin otra migración para recompensas.
+- [Guía Docker y solución de problemas](DOCKER_DEPLOYMENT.md).
+- [Entrega portable sin código fuente ni compilación](docker/portable/LEEME.md).
+- [Respaldos y recuperación](BACKUP_RECOVERY.md).
+- [Pruebas funcionales por roles](FUNCTIONAL_VALIDATION.md),
+  [correcciones y pantallas](FIXES_VALIDATION.md) y
+  [perfil y landing](PROFILE_VALIDATION.md).
+- [Contribución y desarrollo](CONTRIBUTING.md).
