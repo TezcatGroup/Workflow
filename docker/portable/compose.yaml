@@ -1,10 +1,16 @@
-# Se entrega junto a workflow-2026.11.16-r3.tar; no necesita el repositorio.
+# Se entrega junto a workflow-2026.11.16-r4.tar; no necesita el repositorio.
 services:
   app:
-    image: workflow:2026.11.16-r3
+    image: workflow:2026.11.16-r4
     pull_policy: never
     restart: unless-stopped
     stop_grace_period: 45s
+    environment:
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-}
+      ORIGIN:
+      WORKFLOW_LOCAL_HTTP: ${WORKFLOW_LOCAL_HTTP:-true}
     ports:
       - "3000:3000"
     volumes:

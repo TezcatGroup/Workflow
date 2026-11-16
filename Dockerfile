@@ -11,7 +11,17 @@ RUN DATABASE_URL=postgresql://build:build@127.0.0.1:5432/build pnpm build
 FROM build AS production-deps
 RUN pnpm prune --prod
 
-FROM node:22-bookworm-slim
+# Despliegues administrados con PostgreSQL externo y migraciones separadas.
+# Conserva pnpm, drizzle-kit, la configuración y el bootstrap del mismo commit.
+FROM build AS external
+ENV NODE_ENV=production HOST=0.0.0.0 PORT=3000 BODY_SIZE_LIMIT=12M SHUTDOWN_TIMEOUT=5
+RUN mkdir -p /app/uploads && chown node:node /app/uploads
+USER node
+EXPOSE 3000
+CMD ["node", "build"]
+
+# Opción predeterminada del README: web y PostgreSQL en un solo contenedor.
+FROM node:22-bookworm-slim AS standalone
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl \
     && mkdir -p /usr/share/postgresql-common/pgdg \
     && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \

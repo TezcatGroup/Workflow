@@ -23,7 +23,8 @@ try {
       assert.equal((await avatar(actor.id)), actor.fotoPerfil);
       assert.equal((await sharp(Buffer.from(await photo.arrayBuffer())).metadata()).width, 512);
     }
-    assert.equal(Number((await sql`select count(*) n from drizzle.__drizzle_migrations`)[0].n), 9);
+    const journal = JSON.parse(await readFile('/app/drizzle/meta/_journal.json', 'utf8'));
+    assert.equal(Number((await sql`select count(*) n from drizzle.__drizzle_migrations`)[0].n), journal.entries.length);
     console.log('APROBADO: fotos, contraseña y migración conservadas después de recrear el contenedor.');
   } else {
     const admin = await login(process.env.ADMIN_EMAIL, process.env.ADMIN_PASSWORD);

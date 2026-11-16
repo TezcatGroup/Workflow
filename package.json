@@ -10,7 +10,7 @@
     "test": "tsx scripts/verify-sprint1.ts",
     "test:sprint4": "tsx scripts/verify-sprint4.ts",
     "db:push": "drizzle-kit push",
-    "db:migrate": "drizzle-kit migrate",
+    "db:migrate": "drizzle-kit migrate --config=drizzle.config.ts",
     "db:studio": "drizzle-kit studio",
     "db:bootstrap": "tsx scripts/bootstrap-admin.ts",
     "db:demo-admin": "tsx scripts/create-local-demo-admin.ts",
@@ -23,6 +23,7 @@
   "dependencies": {
     "argon2": "^0.44.0",
     "drizzle-orm": "^0.44.0",
+    "jose": "^6.2.17",
     "postgres": "^3.4.0",
     "sharp": "^0.35.5"
   },

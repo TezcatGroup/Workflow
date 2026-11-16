@@ -1,0 +1,27 @@
+import assert from 'node:assert/strict';
+import { generateKeyPair, SignJWT, createLocalJWKSet, exportJWK } from 'jose';
+import { googleConfig, comenzarGoogle, validarFlujoGoogle, validarTokenGoogle } from '../src/lib/server/google-oauth';
+const config = googleConfig({ GOOGLE_CLIENT_ID:'test-client', GOOGLE_CLIENT_SECRET:'test-secret', GOOGLE_REDIRECT_URI:'http://localhost:3000/login/google/callback' })!;
+assert.ok(config);assert.equal(googleConfig({}),null);
+for(const uri of ['http://example.com/login/google/callback','https://example.com/other','https://evil@example.com/login/google/callback','https://example.com/login/google/callback?x=1']) assert.equal(googleConfig({ GOOGLE_CLIENT_ID:'id',GOOGLE_CLIENT_SECRET:'secret',GOOGLE_REDIRECT_URI:uri }),null);
+const flow=await comenzarGoogle(config),url=new URL(flow.url);
+assert.equal(url.origin,'https://accounts.google.com');assert.equal(url.searchParams.get('scope'),'openid email');assert.equal(url.searchParams.get('code_challenge_method'),'S256');
+const checked=await validarFlujoGoogle(flow.cookie,url.searchParams.get('state')!,config);
+assert.equal(checked.nonce,url.searchParams.get('nonce'));
+await assert.rejects(validarFlujoGoogle(flow.cookie,'bad-state',config));
+await assert.rejects(validarFlujoGoogle(flow.cookie.slice(0,-12)+'tampered',url.searchParams.get('state')!,config));
+await assert.rejects(validarFlujoGoogle(flow.cookie,url.searchParams.get('state')!,{...config,redirectUri:'https://other.com/login/google/callback'}));
+const pair=await generateKeyPair('RS256'),jwk=await exportJWK(pair.publicKey);jwk.kid='test';
+const keys=createLocalJWKSet({keys:[jwk]});
+const now=Math.floor(Date.now()/1000);
+const claims={iss:'https://accounts.google.com',aud:config.clientId,sub:'google-user',email:'Registered@Gmail.com',email_verified:true,nonce:checked.nonce,iat:now,exp:now+600};
+async function sign(changes:Record<string,unknown>={}) {return new SignJWT({...claims,...changes}).setProtectedHeader({alg:'RS256',kid:'test'}).sign(pair.privateKey);}
+assert.deepEqual(await validarTokenGoogle(await sign(),config,checked.nonce,keys),{sub:'google-user',email:'registered@gmail.com'});
+assert.equal((await validarTokenGoogle(await sign({email:'worker@school.test',hd:'school.test'}),config,checked.nonce,keys)).email,'worker@school.test');
+for(const changes of [{iss:'https://attacker.test'},{aud:'other-client'},{exp:now-60},{iat:now-7200},{nonce:'wrong'},{email_verified:false},{email_verified:'true'},{email:'external@example.com'},{email:'invalid'},{sub:''},{azp:'other-client'}]) await assert.rejects(validarTokenGoogle(await sign(changes),config,checked.nonce,keys));
+const foreign=await generateKeyPair('RS256');
+const forged=await new SignJWT(claims).setProtectedHeader({alg:'RS256',kid:'test'}).sign(foreign.privateKey);
+await assert.rejects(validarTokenGoogle(forged,config,checked.nonce,keys));
+const noExpiry={...claims} as Record<string,unknown>;delete noExpiry.exp;
+await assert.rejects(validarTokenGoogle(await new SignJWT(noExpiry).setProtectedHeader({alg:'RS256',kid:'test'}).sign(pair.privateKey),config,checked.nonce,keys));
+console.log('PASS: configuración, state/PKCE/nonce, firma, emisor, audiencia, expiración, verificación y autoridad del correo.');

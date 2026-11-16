@@ -66,6 +66,10 @@ compatibles con la imagen. Los cambios también necesitan compilarse y probarse.
 
 ## Funciones
 
+- Dos opciones de acceso: correo/contraseña y Google. Google solo permite entrar
+  a cuentas activas ya creadas con ese mismo correo; no registra usuarios.
+  Su activación requiere configurar una vez un cliente OAuth: sigue la
+  [guía de Google](GOOGLE_LOGIN.md). Sin esa configuración funciona la contraseña.
 - Landing pública, acceso por roles y gestión de tareas, muro, revisiones,
   adjuntos, notificaciones y recompensas.
 - Administración de usuarios, departamentos, etiquetas y auditoría.
@@ -79,6 +83,9 @@ compatibles con la imagen. Los cambios también necesitan compilarse y probarse.
 
 ## Documentación
 
+- [Activar el inicio de sesión con Google](GOOGLE_LOGIN.md).
+- [Pruebas de Google y empaquetado del servidor](GOOGLE_VALIDATION.md).
+- [Servidor con base y migraciones separadas (Hermes)](SERVER_DEPLOYMENT.md).
 - [Guía Docker y solución de problemas](DOCKER_DEPLOYMENT.md).
 - [Entrega portable sin código fuente ni compilación](docker/portable/LEEME.md).
 - [Respaldos y recuperación](BACKUP_RECOVERY.md).
