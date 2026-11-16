@@ -11,15 +11,16 @@ export const COOKIE_NAME = 'tezcat_session';
 const TTL_SECONDS = 60 * 60 * 24 * 7;
 const tokenHash = (token: string) => createHash('sha256').update(token).digest('hex');
 
-export async function crearSesion(usuarioId: string, cookies: Cookies): Promise<void> {
+export async function crearSesion(usuarioId: string, cookies: Cookies, executor: Pick<typeof db, 'insert'> = db,
+  secure = !dev && env.WORKFLOW_LOCAL_HTTP !== 'true'): Promise<void> {
   const token = randomBytes(32).toString('hex');
-  await db.insert(sesiones).values({
+  await executor.insert(sesiones).values({
     usuarioId,
     tokenHash: tokenHash(token),
     expiraEn: new Date(Date.now() + TTL_SECONDS * 1000)
   });
   cookies.set(COOKIE_NAME, token, {
-    path: '/', httpOnly: true, secure: !dev && env.WORKFLOW_LOCAL_HTTP !== 'true', sameSite: 'lax', maxAge: TTL_SECONDS
+    path: '/', httpOnly: true, secure, sameSite: 'lax', maxAge: TTL_SECONDS
   });
 }
 

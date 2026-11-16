@@ -5,6 +5,9 @@
 !svelte.config.js
 !vite.config.ts
 !tsconfig.json
+!drizzle.config.ts
+!scripts
+!scripts/bootstrap-admin.ts
 !src
 !src/**
 !static

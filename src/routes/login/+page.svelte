@@ -1,7 +1,7 @@
 <script lang="ts">
-  import type { ActionData } from './$types';
+  import type { ActionData, PageData } from './$types';
   import { page } from '$app/state';
-  let { form }: { form: ActionData } = $props();
+  let { form, data }: { form: ActionData; data: PageData } = $props();
 
   let verPassword = $state(false);
   let enviando = $state(false);
@@ -45,6 +45,9 @@
     <div class="w-full rounded-2xl border border-tezcat-border/80 bg-tezcat-card/90 p-7 shadow-2xl backdrop-blur-md sm:p-8">
       {#if page.url.searchParams.get('password') === 'updated'}
         <p role="status" class="mb-4 rounded-lg border border-emerald-400/40 bg-emerald-400/10 p-3 text-sm text-emerald-300">Contraseña actualizada. Inicia sesión con tu nueva contraseña.</p>
+      {/if}
+      {#if data.googleError}
+        <p role="alert" class="mb-4 rounded-lg border border-tezcat-danger/40 bg-tezcat-danger/10 p-3 text-sm text-red-300">{data.googleError}</p>
       {/if}
       {#if form?.error}
         <div
@@ -123,6 +126,18 @@
           </button>
         </div>
       </form>
+      <div class="my-5 flex items-center gap-3 text-xs text-tezcat-textSecondary"><span class="h-px flex-1 bg-tezcat-border"></span><span>o</span><span class="h-px flex-1 bg-tezcat-border"></span></div>
+      {#if data.googleDisponible}
+        <a href="/login/google" data-sveltekit-reload class="flex w-full items-center justify-center gap-3 rounded-xl border border-tezcat-border bg-tezcat-surfaceAlt px-4 py-3 text-sm font-semibold text-white hover:border-tezcat-cyan focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-tezcat-cyan">
+          <img src="/icons/google.svg" alt="" width="20" height="20" />Continuar con Google
+        </a>
+        <p class="mt-3 text-center text-xs leading-5 text-tezcat-textSecondary">Usa el mismo correo de tu cuenta de Workflow. No se crean cuentas nuevas.</p>
+      {:else}
+        <button type="button" disabled aria-describedby="google-no-disponible" class="flex w-full cursor-not-allowed items-center justify-center gap-3 rounded-xl border border-tezcat-border bg-tezcat-surfaceAlt px-4 py-3 text-sm font-semibold text-tezcat-textSecondary">
+          <img src="/icons/google.svg" alt="" width="20" height="20" />Continuar con Google
+        </button>
+        <p id="google-no-disponible" class="mt-3 text-center text-xs leading-5 text-tezcat-textSecondary">Google no está disponible en esta dirección. Puedes entrar con correo y contraseña.</p>
+      {/if}
     </div>
 
     <p class="mt-8 text-center font-mono text-[11px] text-tezcat-textMuted">© Tezcat Group</p>
