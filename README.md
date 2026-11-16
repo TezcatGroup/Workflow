@@ -63,6 +63,12 @@ dentro del contenedor en el puerto 5432; no se publica al anfitrión.
 Se aplican a instalaciones nuevas. El comando `--no-recreate` conserva el
 contenedor anterior y sus credenciales; no restablece cuentas existentes.
 
+## Respaldos y recuperación
+
+La imagen incluye un respaldo completo con la aplicación detenida, validación
+de integridad y restauración solo a volúmenes vacíos. Consulta
+[BACKUP_RECOVERY.md](BACKUP_RECOVERY.md) para los comandos y la prueba de recuperación.
+
 ## Desarrollo y verificación
 
 Para desarrollo se necesitan Node.js 22, pnpm 11 y un PostgreSQL independiente.

@@ -77,6 +77,8 @@ def main():
     except BlockingIOError:
         raise RuntimeError('El volumen ya está en uso por otra instancia de Workflow')
     version_file = DATA / 'PG_VERSION'
+    if (ROOT / '.restore-in-progress').exists():
+        raise RuntimeError('Restauración incompleta; restaura el respaldo en un volumen nuevo')
     password_file = ROOT / 'db-password'
     if version_file.exists():
         if version_file.read_text().strip() != '16':

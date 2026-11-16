@@ -119,7 +119,7 @@ Debe mostrar Type=volume, Name=workflow_data y Destination=/var/lib/workflow.
 Si no aparece ese montaje, NO sigas este procedimiento: es una instalación
 anterior sin persistencia y requiere una transferencia explícita de datos.
 Conserva también un respaldo consistente antes de actualizar datos importantes;
-la automatización de respaldos se implementará en la fase 5.
+el procedimiento de fase 5 está en [BACKUP_RECOVERY.md](BACKUP_RECOVERY.md).
 
 Para una instalación con ese volumen, reconstruir y recrear mantiene los datos:
 
@@ -293,7 +293,8 @@ recurso compartido. La alternativa docker run está en el LEEME de entrega.
 **El TAR exporta la imagen, no el volumen ni los datos de una instalación.**
 No uses docker export/import para este procedimiento: se necesitan save/load
 para conservar la imagen y su configuración. La transferencia de datos existentes
-se resolverá mediante respaldo/restauración en la fase 5. No se publicó la imagen
+se realiza mediante [respaldo/restauración](BACKUP_RECOVERY.md) con una imagen
+que incluya las herramientas de fase 5. No se publicó la imagen
 en ningún registro externo.
 
 Referencias: [contexto de construcción](https://docs.docker.com/build/concepts/context/),
