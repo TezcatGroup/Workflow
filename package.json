@@ -15,12 +15,16 @@
     "db:bootstrap": "tsx scripts/bootstrap-admin.ts",
     "db:demo-admin": "tsx scripts/create-local-demo-admin.ts",
     "test:muro": "tsx scripts/verify-muro.ts",
-    "test:gamificacion": "tsx scripts/verify-gamificacion.ts"
+    "test:gamificacion": "tsx scripts/verify-gamificacion.ts",
+    "test:functional": "node scripts/verify-functional.mjs",
+    "test:concurrency": "node scripts/verify-concurrency.mjs",
+    "test:user-deletion": "node scripts/verify-user-deletion.mjs"
   },
   "dependencies": {
     "argon2": "^0.44.0",
     "drizzle-orm": "^0.44.0",
-    "postgres": "^3.4.0"
+    "postgres": "^3.4.0",
+    "sharp": "^0.35.5"
   },
   "devDependencies": {
     "@sveltejs/adapter-node": "^5.0.0",

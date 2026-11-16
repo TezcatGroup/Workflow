@@ -27,6 +27,12 @@
       && (!fEstado || String(u.activo) === fEstado);
   }));
   const activos = $derived(data.usuarios.filter((u) => u.activo).length);
+  let cuentaAEliminar = $state<PageData['usuarios'][number] | null>(null);
+  let dialogo: HTMLDialogElement;
+  let confirmacionEmail = $state(''), errorEliminar = $state(''), eliminando = $state(false);
+  function confirmarEliminacion(cuenta: PageData['usuarios'][number]) {
+    cuentaAEliminar = cuenta; confirmacionEmail = ''; errorEliminar = ''; dialogo.showModal();
+  }
 
   // Contraseña temporal aleatoria (mínimo 12 caracteres que exige el servidor)
   let password = $state('');
@@ -137,6 +143,7 @@
             <button class="{boton} self-end" type="submit">Guardar cambios</button>
           </form>
 
+          <div class="flex flex-wrap items-center justify-between gap-3">
           <form method="POST" action="?/estado" use:enhance>
             <input type="hidden" name="id" value={u.id} />
             <input type="hidden" name="activo" value={u.activo ? 'false' : 'true'} />
@@ -144,6 +151,8 @@
               {u.activo ? 'Desactivar cuenta' : 'Reactivar cuenta'}
             </button>
           </form>
+          <button type="button" disabled={u.id === data.admin.id} onclick={() => confirmarEliminacion(u)} class="inline-flex items-center gap-2 rounded-lg border border-red-400/30 px-3 py-2 text-xs font-semibold text-red-300 hover:bg-red-400/10 focus-visible:outline-2 focus-visible:outline-red-300 disabled:cursor-not-allowed disabled:opacity-40" title={u.id === data.admin.id ? 'No puedes eliminar tu propia cuenta' : `Eliminar ${u.email}`}><span aria-hidden="true" class="material-symbols-outlined text-base">delete</span>Eliminar cuenta</button>
+          </div>
         </article>
       {:else}
         <p class="rounded-xl border border-tezcat-border bg-tezcat-card p-8 text-center text-sm text-tezcat-textSecondary">
@@ -153,3 +162,26 @@
     </section>
   </main>
 </div>
+
+<dialog bind:this={dialogo} aria-labelledby="eliminar-titulo" aria-describedby="eliminar-descripcion" oncancel={(e) => { if (eliminando) e.preventDefault(); }} onclose={() => { cuentaAEliminar = null; }} class="m-auto w-[calc(100%-2rem)] max-w-lg rounded-xl border border-tezcat-border bg-tezcat-card p-6 text-tezcat-textPrimary backdrop:bg-black/70">
+  {#if cuentaAEliminar}
+    <h2 id="eliminar-titulo" class="text-xl font-bold">Eliminar cuenta permanentemente</h2>
+    <p class="mt-3 break-words font-semibold">{cuentaAEliminar.nombre}</p><p class="mt-1 break-all text-sm text-tezcat-cyan">{cuentaAEliminar.email}</p>
+    <p id="eliminar-descripcion" class="mt-4 text-sm leading-relaxed text-tezcat-textSecondary">Se revocará su acceso y se borrarán sus sesiones, notificaciones, puntos y canjes resueltos. Las tareas, mensajes y adjuntos se conservarán sin la referencia a esta cuenta. Esta acción no se puede deshacer.</p>
+    <p class="mt-3 text-sm text-tezcat-textSecondary">Las tareas y canjes pendientes deben resolverse primero. Si solo quieres suspender el acceso, usa Desactivar cuenta.</p>
+    {#if errorEliminar}<p role="alert" class="mt-4 rounded-lg border border-red-400/30 bg-red-400/10 p-3 text-sm text-red-300">{errorEliminar}</p>{/if}
+    <form method="POST" action="?/eliminar" class="mt-5" use:enhance={() => {
+      eliminando = true; errorEliminar = '';
+      return async ({ result, update }) => {
+        try { await update({ reset: false }); if (result.type === 'success') dialogo.close();
+          else errorEliminar = result.type === 'failure' ? String(result.data?.error ?? 'No se pudo eliminar la cuenta.') : 'No se pudo completar la eliminación.';
+        } finally { eliminando = false; }
+      };
+    }}>
+      <input type="hidden" name="id" value={cuentaAEliminar.id} />
+      <label for="confirmacion-email" class="mb-2 block text-sm font-medium">Escribe el correo de la cuenta para confirmar</label>
+      <input id="confirmacion-email" name="confirmacionEmail" type="email" autocomplete="off" required class={campo} bind:value={confirmacionEmail} />
+      <div class="mt-5 flex flex-wrap justify-end gap-3"><button type="button" disabled={eliminando} onclick={() => dialogo.close()} class={boton}>Cancelar</button><button type="submit" disabled={eliminando || confirmacionEmail.trim().toLowerCase() !== cuentaAEliminar.email.toLowerCase()} class="rounded-lg bg-red-400 px-4 py-2 text-sm font-bold text-slate-950 hover:bg-red-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-300 disabled:opacity-40">{eliminando ? 'Eliminando…' : 'Eliminar definitivamente'}</button></div>
+    </form>
+  {/if}
+</dialog>

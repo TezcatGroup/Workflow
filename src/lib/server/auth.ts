@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { dev } from '$app/environment';
+import { env } from '$env/dynamic/private';
 import { and, eq, gt, sql } from 'drizzle-orm';
 import type { Cookies } from '@sveltejs/kit';
 import { db } from '$lib/server/db';
@@ -18,14 +19,14 @@ export async function crearSesion(usuarioId: string, cookies: Cookies): Promise<
     expiraEn: new Date(Date.now() + TTL_SECONDS * 1000)
   });
   cookies.set(COOKIE_NAME, token, {
-    path: '/', httpOnly: true, secure: !dev, sameSite: 'lax', maxAge: TTL_SECONDS
+    path: '/', httpOnly: true, secure: !dev && env.WORKFLOW_LOCAL_HTTP !== 'true', sameSite: 'lax', maxAge: TTL_SECONDS
   });
 }
 
 export async function leerSesion(token: string) {
   const [row] = await db.select({
     id: usuarios.id, nombre: usuarios.nombre, rol: usuarios.rol,
-    departamentoId: usuarios.departamentoId
+    departamentoId: usuarios.departamentoId, fotoPerfil: usuarios.fotoPerfil
   }).from(sesiones)
     .innerJoin(usuarios, eq(sesiones.usuarioId, usuarios.id))
     .where(and(eq(sesiones.tokenHash, tokenHash(token)), gt(sesiones.expiraEn, new Date()), eq(usuarios.activo, true)))

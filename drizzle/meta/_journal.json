@@ -57,6 +57,13 @@
       "when": 1793602037351,
       "tag": "0007_etiquetas_muro",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1794801600000,
+      "tag": "0008_foto_perfil",
+      "breakpoints": true
     }
   ]
 }

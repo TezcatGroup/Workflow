@@ -1,10 +1,13 @@
 <script lang="ts">
-  import type { PageData } from './$types';
+  import type { ActionData, PageData } from './$types';
+  import { enhance } from '$app/forms';
   import EncabezadoApp from '$lib/components/EncabezadoApp.svelte';
   import Panel from '$lib/components/Panel.svelte';
   import GraficaRadarRamas from '$lib/components/GraficaRadarRamas.svelte';
 
-  let { data }: { data: PageData } = $props();
+  let { data, form }: { data: PageData; form: ActionData } = $props();
+  let guardandoFoto = $state(false);
+  let guardandoPassword = $state(false);
 
   type Categoria = 'LENGUAJE DE PROGRAMACIÓN' | 'FRAMEWORK';
   type TabHistorial = 'CONTRIBUCIONES' | 'EXP' | 'MONEDAS';
@@ -56,7 +59,11 @@
         <div class="flex min-w-0 items-center gap-5">
           <div class="relative shrink-0">
             <span class="flex size-20 items-center justify-center rounded-2xl bg-tezcat-surfaceAlt font-mono text-2xl font-bold text-tezcat-cyan ring-2 ring-tezcat-cyan/30">
-              {iniciales(data.user.nombre)}
+              {#if data.user.fotoPerfil && data.user.rol !== 'ADMIN'}
+                <img src={`/perfil/foto?v=${data.user.fotoPerfil}`} alt="Tu foto de perfil" class="size-20 rounded-2xl object-cover" width="80" height="80" />
+              {:else}
+                {iniciales(data.user.nombre)}
+              {/if}
             </span>
             <span class="absolute -right-2 -bottom-2 rounded-lg border border-tezcat-cyan/50 bg-tezcat-bg px-2 py-0.5 font-mono text-[11px] font-bold text-tezcat-cyan shadow-md">
               NVL {p.nivel}
@@ -201,6 +208,54 @@
         {/if}
       </div>
     </section>
+
+    {#if data.user.rol === 'ENCARGADO' || data.user.rol === 'MIEMBRO'}
+      <Panel titulo="Ajustes de perfil" descripcion="Tu nombre, correo, rol y departamento los administra el administrador.">
+        <div class="grid gap-8 md:grid-cols-2">
+          <div class="min-w-0 space-y-4">
+            <h3 class="font-semibold text-white">Foto de perfil</h3>
+            <p id="ayuda-foto" class="text-sm text-tezcat-textSecondary">JPG, PNG o WebP sin animación, de hasta 2 MB y 16 megapíxeles. La foto se recorta a un cuadrado.</p>
+            {#if form && 'ajuste' in form && form.ajuste === 'foto'}
+              {#if form.error}<p role="alert" class="text-sm text-red-300">{form.error}</p>{/if}
+              {#if form.ok}<p role="status" class="text-sm text-emerald-300">{form.ok}</p>{/if}
+            {/if}
+            <form method="POST" action="?/guardarFoto" enctype="multipart/form-data" class="space-y-4" use:enhance={() => {
+              guardandoFoto = true;
+              return async ({ update }) => { try { await update(); } finally { guardandoFoto = false; } };
+            }}>
+              <label for="foto" class="block text-sm font-medium">Seleccionar imagen</label>
+              <input id="foto" name="foto" type="file" accept="image/jpeg,image/png,image/webp" required aria-describedby="ayuda-foto" class="block w-full rounded-lg border border-tezcat-border bg-tezcat-bg p-2 text-sm file:mr-3 file:rounded file:border-0 file:bg-tezcat-surfaceAlt file:px-3 file:py-2 file:text-tezcat-textPrimary focus-visible:outline-2 focus-visible:outline-tezcat-cyan" />
+              <button disabled={guardandoFoto} class="rounded-lg bg-tezcat-cyan px-4 py-2.5 text-sm font-semibold text-slate-950 hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-tezcat-cyan disabled:opacity-50">{guardandoFoto ? 'Guardando…' : 'Guardar foto'}</button>
+            </form>
+            {#if data.user.fotoPerfil}
+              <form method="POST" action="?/quitarFoto" use:enhance={() => {
+                guardandoFoto = true;
+                return async ({ update }) => { try { await update(); } finally { guardandoFoto = false; } };
+              }}>
+                <button disabled={guardandoFoto} class="rounded-lg border border-tezcat-border px-4 py-2.5 text-sm hover:bg-tezcat-surfaceAlt focus-visible:outline-2 focus-visible:outline-tezcat-cyan disabled:opacity-50">Quitar foto</button>
+              </form>
+            {/if}
+          </div>
+          <form method="POST" action="?/cambiarPassword" class="min-w-0 space-y-4" use:enhance={() => {
+            guardandoPassword = true;
+            return async ({ update }) => { try { await update(); } finally { guardandoPassword = false; } };
+          }}>
+            <h3 class="font-semibold text-white">Cambiar contraseña</h3>
+            <p id="ayuda-password" class="text-sm text-tezcat-textSecondary">Usa entre 12 y 128 caracteres. Al cambiarla, se cerrarán todas tus sesiones y tendrás que iniciar sesión de nuevo.</p>
+            {#if form && 'ajuste' in form && form.ajuste === 'password' && form.error}
+              <p role="alert" class="text-sm text-red-300">{form.error}</p>
+            {/if}
+            {#each [{ id: 'actual', label: 'Contraseña actual', autocomplete: 'current-password' }, { id: 'nueva', label: 'Nueva contraseña', autocomplete: 'new-password' }, { id: 'confirmacion', label: 'Confirmar nueva contraseña', autocomplete: 'new-password' }] as campo}
+              <div class="space-y-1.5">
+                <label for={campo.id} class="block text-sm font-medium">{campo.label}</label>
+                <input id={campo.id} name={campo.id} type="password" autocomplete={campo.id === 'actual' ? 'current-password' : 'new-password'} required minlength={campo.id === 'actual' ? undefined : 12} maxlength={campo.id === 'actual' ? 1024 : 128} aria-describedby="ayuda-password" class="w-full rounded-lg border border-tezcat-border bg-tezcat-bg px-3 py-2.5 text-sm focus:border-tezcat-cyan focus:outline-none focus:ring-1 focus:ring-tezcat-cyan" />
+              </div>
+            {/each}
+            <button disabled={guardandoPassword} class="rounded-lg bg-tezcat-cyan px-4 py-2.5 text-sm font-semibold text-slate-950 hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-tezcat-cyan disabled:opacity-50">{guardandoPassword ? 'Cambiando…' : 'Cambiar contraseña'}</button>
+          </form>
+        </div>
+      </Panel>
+    {/if}
 
     <!-- TW-20 y TW-18: Gráfica Radar Interactiva y Valores Numéricos de Ramas de Habilidad -->
     <Panel
