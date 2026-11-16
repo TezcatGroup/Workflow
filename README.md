@@ -69,6 +69,9 @@ La imagen incluye un respaldo completo con la aplicación detenida, validación
 de integridad y restauración solo a volúmenes vacíos. Consulta
 [BACKUP_RECOVERY.md](BACKUP_RECOVERY.md) para los comandos y la prueba de recuperación.
 
+Resultados, errores conocidos y límites de las pruebas integrales:
+[informe de fase 6](docker/universidad/FASE6_VALIDACION.md).
+
 ## Desarrollo y verificación
 
 Para desarrollo se necesitan Node.js 22, pnpm 11 y un PostgreSQL independiente.
