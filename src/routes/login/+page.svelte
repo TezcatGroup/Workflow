@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { ActionData } from './$types';
+  import { page } from '$app/state';
   let { form }: { form: ActionData } = $props();
 
   let verPassword = $state(false);
@@ -42,6 +43,9 @@
 
     <!-- Tarjeta -->
     <div class="w-full rounded-2xl border border-tezcat-border/80 bg-tezcat-card/90 p-7 shadow-2xl backdrop-blur-md sm:p-8">
+      {#if page.url.searchParams.get('password') === 'updated'}
+        <p role="status" class="mb-4 rounded-lg border border-emerald-400/40 bg-emerald-400/10 p-3 text-sm text-emerald-300">Contraseña actualizada. Inicia sesión con tu nueva contraseña.</p>
+      {/if}
       {#if form?.error}
         <div
           role="alert"

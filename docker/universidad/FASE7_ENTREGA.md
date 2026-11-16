@@ -1,8 +1,8 @@
 # Fase 7 — entrega y prueba SMB entre VM y Windows
 
 Este informe corresponde a la primera entrega 2026.11.16. La revisión actual es
-2026.11.16-r2, con errores corregidos y pantallas completadas; consulta
-[FIXES_VALIDATION.md](../../FIXES_VALIDATION.md). Se conserva aquí la evidencia
+2026.11.16-r3, con errores corregidos, pantallas completadas y ajustes de perfil; consulta
+[FIXES_VALIDATION.md](../../FIXES_VALIDATION.md) y [PROFILE_VALIDATION.md](../../PROFILE_VALIDATION.md). Se conserva aquí la evidencia
 histórica de SMB y del paquete anterior.
 
 Ejecutada el 16 de noviembre de 2026, hora de México. Código de aplicación:

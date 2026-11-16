@@ -41,7 +41,7 @@ y entrega el TAR junto a los archivos de [docker/portable](docker/portable),
 El profesor abre una terminal en la carpeta recibida y copia:
 
 ```text
-docker load -i workflow-2026.11.16-r2.tar
+docker load -i workflow-2026.11.16-r3.tar
 docker compose -p workflow-unico up -d --no-build --pull never --no-recreate
 docker compose -p workflow-unico exec -T app node docker/universidad/access.mjs
 ```
@@ -80,6 +80,14 @@ Los fallos de saldo negativo y reembolso múltiple ya están corregidos en r2:
 [correcciones, pantallas completadas y pruebas](FIXES_VALIDATION.md).
 Usuarios permite eliminar cuentas con confirmación del correo; el servidor
 rechaza eliminar la cuenta propia o cuentas con tareas/canjes pendientes.
+
+En **Perfil**, encargados y miembros pueden subir/quitar su foto y cambiar su
+contraseña indicando la actual. El cambio cierra todas sus sesiones. Los
+administradores no tienen estos ajustes. **Solo ADMIN puede cambiar nombres,
+desde Usuarios**; no hay edición del nombre desde el perfil personal.
+Las fotos aceptan JPG, PNG o WebP sin animación, hasta 2 MB y 16 megapíxeles;
+se guardan en el volumen persistente y se incluyen en los respaldos.
+Resultados de la revisión r3: [pruebas de perfil](PROFILE_VALIDATION.md).
 
 ## Desarrollo y verificación
 

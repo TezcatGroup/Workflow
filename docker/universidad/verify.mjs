@@ -33,7 +33,8 @@ try {
     const file = await request(state.filePath, cookie);
     assert.equal(file.status, 200);
     assert.equal(await file.text(), state.contents, 'adjunto conservado');
-    assert.equal(Number((await sql`SELECT count(*) AS n FROM drizzle.__drizzle_migrations`)[0].n), 8);
+    const journal = JSON.parse(await readFile('/app/drizzle/meta/_journal.json', 'utf8'));
+    assert.equal(Number((await sql`SELECT count(*) AS n FROM drizzle.__drizzle_migrations`)[0].n), journal.entries.length);
     assert.equal(Number((await sql`SELECT count(*) AS n FROM usuarios`)[0].n), state.users);
     console.log('APROBADO: datos, contraseña, migraciones y adjuntos persisten tras reiniciar.');
   } else {

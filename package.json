@@ -23,7 +23,8 @@
   "dependencies": {
     "argon2": "^0.44.0",
     "drizzle-orm": "^0.44.0",
-    "postgres": "^3.4.0"
+    "postgres": "^3.4.0",
+    "sharp": "^0.35.5"
   },
   "devDependencies": {
     "@sveltejs/adapter-node": "^5.0.0",

@@ -26,7 +26,7 @@ export async function crearSesion(usuarioId: string, cookies: Cookies): Promise<
 export async function leerSesion(token: string) {
   const [row] = await db.select({
     id: usuarios.id, nombre: usuarios.nombre, rol: usuarios.rol,
-    departamentoId: usuarios.departamentoId
+    departamentoId: usuarios.departamentoId, fotoPerfil: usuarios.fotoPerfil
   }).from(sesiones)
     .innerJoin(usuarios, eq(sesiones.usuarioId, usuarios.id))
     .where(and(eq(sesiones.tokenHash, tokenHash(token)), gt(sesiones.expiraEn, new Date()), eq(usuarios.activo, true)))

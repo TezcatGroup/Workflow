@@ -17,6 +17,7 @@ export const usuarios = pgTable('usuarios', {
   nombre: varchar('nombre', { length: 160 }).notNull(),
   email: varchar('email', { length: 320 }).notNull().unique(),
   passwordHash: text('password_hash').notNull(),
+  fotoPerfil: text('foto_perfil'),
   rol: rolUsuario('rol').notNull().default('MIEMBRO'),
   departamentoId: uuid('departamento_id').references(() => departamentos.id, { onDelete: 'set null' }),
   activo: boolean('activo').notNull().default(true),

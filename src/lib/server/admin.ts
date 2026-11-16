@@ -3,6 +3,7 @@ import { and, asc, eq, inArray, ne, or, sql } from 'drizzle-orm';
 import { db } from '$lib/server/db';
 import { auditoriaUsuarios, canjes, departamentos, tareas, usuarios, rolUsuario } from '$lib/server/db/schema';
 import { hashPassword } from '$lib/server/auth';
+import { borrarFoto } from '$lib/server/perfil';
 
 export type Admin = NonNullable<App.Locals['user']>;
 
@@ -89,10 +90,10 @@ export async function cambiarEstadoUsuario(actor: Admin, id: string, activo: boo
 export async function eliminarUsuario(actor: Admin, id: string, confirmacionEmail: string): Promise<void> {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) error(400, 'Identificador de usuario inválido');
   if (id === actor.id) error(400, 'No puedes eliminar tu propia cuenta');
-  await db.transaction(async (tx) => {
+  const foto = await db.transaction(async (tx) => {
     // Orden estable: también impide que dos administradores se eliminen mutuamente.
     const cuentas = await tx.select({ id: usuarios.id, nombre: usuarios.nombre, email: usuarios.email,
-      rol: usuarios.rol, activo: usuarios.activo }).from(usuarios)
+      rol: usuarios.rol, activo: usuarios.activo, fotoPerfil: usuarios.fotoPerfil }).from(usuarios)
       .where(inArray(usuarios.id, [actor.id, id])).orderBy(asc(usuarios.id)).for('update');
     const administrador = cuentas.find(u => u.id === actor.id);
     if (!administrador?.activo || administrador.rol !== 'ADMIN') error(403, 'Tu cuenta ya no tiene permisos de administración');
@@ -117,7 +118,9 @@ export async function eliminarUsuario(actor: Admin, id: string, confirmacionEmai
     await tx.delete(usuarios).where(eq(usuarios.id, id));
     await tx.insert(auditoriaUsuarios).values({ actorId: actor.id, accion: 'USUARIO_ELIMINADO',
       detalle: { usuarioEliminado: identidad } });
+    return objetivo.fotoPerfil;
   });
+  await borrarFoto(foto);
 }
 
 export async function crearDepartamento(actor: Admin, nombre: string): Promise<void> {
