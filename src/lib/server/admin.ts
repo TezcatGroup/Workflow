@@ -1,8 +1,8 @@
 import { error } from '@sveltejs/kit';
 import { and, asc, eq, inArray, ne, or, sql } from 'drizzle-orm';
 import { db } from '$lib/server/db';
-import { auditoriaUsuarios, canjes, departamentos, tareas, usuarios, rolUsuario } from '$lib/server/db/schema';
-import { hashPassword } from '$lib/server/auth';
+import { auditoriaUsuarios, canjes, departamentos, tareas, usuarios, rolUsuario, sesiones } from '$lib/server/db/schema';
+import { autenticar, hashPassword } from '$lib/server/auth';
 import { borrarFoto } from '$lib/server/perfil';
 
 export type Admin = NonNullable<App.Locals['user']>;
@@ -14,6 +14,30 @@ export function exigirAdmin(user: App.Locals['user']): Admin {
 
 export function campo(form: FormData, name: string): string {
   return String(form.get(name) ?? '').trim();
+}
+
+export async function restablecerPassword(actor: Admin, form: FormData) {
+  exigirAdmin(actor);
+  const id = campo(form, 'id');
+  const nueva = String(form.get('nueva') ?? '');
+  const confirmacion = String(form.get('confirmacion') ?? '');
+  const actual = String(form.get('passwordAdmin') ?? '');
+  if (!/^[0-9a-f-]{36}$/i.test(id) || nueva.length < 12 || nueva.length > 128 || nueva !== confirmacion) error(400, 'Revisa la cuenta y confirma una contraseña de 12 a 128 caracteres');
+  if (!actual || actual.length > 1024) error(400, 'Confirma con tu contraseña de administrador');
+  const [admin] = await db.select().from(usuarios).where(eq(usuarios.id, actor.id));
+  const validado = admin && await autenticar(admin.email, actual);
+  if (!validado || validado.rol !== 'ADMIN') error(403, 'No se pudo verificar tu contraseña de administrador');
+  const passwordHash = await hashPassword(nueva);
+  await db.transaction(async tx => {
+    const cuentas = await tx.select().from(usuarios).where(inArray(usuarios.id, [actor.id, id])).orderBy(asc(usuarios.id)).for('update');
+    const vigente = cuentas.find(u => u.id === actor.id);
+    const objetivo = cuentas.find(u => u.id === id);
+    if (!vigente?.activo || vigente.rol !== 'ADMIN' || vigente.passwordHash !== validado.passwordHash) error(403, 'Vuelve a iniciar sesión como administrador');
+    if (!objetivo?.activo || objetivo.rol === 'ADMIN') error(400, 'Solo se restablecen cuentas activas de miembros y encargados');
+    await tx.update(usuarios).set({ passwordHash, intentosFallidos: 0, bloqueadoHasta: null, actualizadoEn: new Date() }).where(eq(usuarios.id, id));
+    await tx.delete(sesiones).where(eq(sesiones.usuarioId, id));
+    await tx.insert(auditoriaUsuarios).values({ actorId: actor.id, usuarioObjetivoId: id, accion: 'PASSWORD_RESTABLECIDA', detalle: { sesionesRevocadas: true } });
+  });
 }
 
 function validarEmail(value: string): string {

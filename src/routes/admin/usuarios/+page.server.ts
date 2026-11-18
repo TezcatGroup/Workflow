@@ -3,7 +3,7 @@ import { asc, eq } from 'drizzle-orm';
 import type { PageServerLoad } from './$types';
 import { db } from '$lib/server/db';
 import { departamentos, usuarios } from '$lib/server/db/schema';
-import { actualizarUsuario, cambiarEstadoUsuario, crearUsuario, eliminarUsuario, exigirAdmin, campo } from '$lib/server/admin';
+import { actualizarUsuario, cambiarEstadoUsuario, crearUsuario, eliminarUsuario, exigirAdmin, campo, restablecerPassword } from '$lib/server/admin';
 
 export const load: PageServerLoad = async ({ locals }) => {
   exigirAdmin(locals.user);
@@ -17,6 +17,11 @@ export const load: PageServerLoad = async ({ locals }) => {
 };
 
 export const actions: Actions = {
+  restablecerPassword: async ({ locals, request }) => {
+    const actor = exigirAdmin(locals.user);
+    try { await restablecerPassword(actor, await request.formData()); return { ok: 'Contraseña restablecida y sesiones anteriores cerradas. Entrega la nueva contraseña a la persona por un medio privado; podrá cambiarla desde Perfil.' }; }
+    catch (e) { if (isHttpError(e)) return fail(e.status, { error: e.body.message }); throw e; }
+  },
   eliminar: async ({ locals, request }) => {
     const actor = exigirAdmin(locals.user);
     const form = await request.formData();

@@ -20,7 +20,7 @@ import { campo } from '$lib/server/admin';
 import { cambiarPassword, exigirPerfilEditable, guardarFoto, quitarFoto } from '$lib/server/perfil';
 import { COOKIE_NAME } from '$lib/server/auth';
 
-const XP_POR_NIVEL = 1000;
+import { XP_POR_NIVEL, calcularNivel } from '$lib/progreso';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export const load: PageServerLoad = async ({ locals }) => {
@@ -199,7 +199,7 @@ export const load: PageServerLoad = async ({ locals }) => {
   const expTotal = Math.max(0, Number(exp.total) || 0);
   const monedasTotal = Number(monedas.total) || 0;
 
-  const nivel = Math.floor(expTotal / XP_POR_NIVEL) + 1;
+  const { nivel } = calcularNivel(expTotal);
   const expEnNivelActual = expTotal % XP_POR_NIVEL;
   const expRestanteParaSubir = XP_POR_NIVEL - expEnNivelActual;
   const porcentajeNivel = Math.min(100, Math.round((expEnNivelActual / XP_POR_NIVEL) * 100));

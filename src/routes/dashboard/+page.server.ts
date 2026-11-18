@@ -3,6 +3,7 @@ import { and, asc, desc, eq, gte, inArray, lt, ne, sql } from 'drizzle-orm';
 import type { PageServerLoad } from './$types';
 import { db } from '$lib/server/db';
 import { movimientosXp, proyectos, tareas, usuarios } from '$lib/server/db/schema';
+import { calcularNivel, XP_POR_NIVEL } from '$lib/progreso';
 
 type Prioridad = 'critica' | 'progreso' | 'cola';
 
@@ -49,11 +50,6 @@ function formatearEstimado(minutos: number | null): string {
   return `${horas}h ${mins}m`;
 }
 
-// TODO(equipo): confirmar la fórmula real de nivel/XP, esta es de arranque.
-function calcularNivel(xpTotal: number) {
-  const nivel = Math.floor(xpTotal / 500) + 1;
-  return { nivel, xpMeta: nivel * 500, nivelSiguiente: nivel + 1 };
-}
 
 function calcularRango(nivel: number): string {
   if (nivel >= 10) return 'Tier V · Rango Maestro';
@@ -85,7 +81,7 @@ async function cargarDashboard(usuarioId: string, departamentoId: string | null)
     .select({ total: sql<number>`coalesce(sum(${movimientosXp.cantidad}), 0)::int` })
     .from(movimientosXp)
     .where(eq(movimientosXp.usuarioId, usuarioId));
-  const xpTotal = xpFila.total;
+  const xpTotal = Math.max(0, Number(xpFila.total) || 0);
   const { nivel, xpMeta, nivelSiguiente } = calcularNivel(xpTotal);
 
   const diasConMovimiento = await db
@@ -118,6 +114,8 @@ async function cargarDashboard(usuarioId: string, departamentoId: string | null)
     racha,
     cuota,
     xp: xpTotal,
+    xpEnNivel: xpTotal % XP_POR_NIVEL,
+    xpPorNivel: XP_POR_NIVEL,
     xpMeta,
     nivelSiguiente
   };

@@ -84,6 +84,7 @@
       return `Reasignada a ${detalle?.nuevoResponsableNombre ?? 'otro miembro'}`;
     }
     if (e.tipo === 'REASIGNACION_RECHAZADA') return 'Solicitud de reasignación denegada';
+    if (e.tipo === 'TAREA_EDITADA') return 'Datos de la tarea actualizados';
     return e.tipo;
   }
 

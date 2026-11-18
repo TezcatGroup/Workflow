@@ -97,7 +97,7 @@
   };
 
   // ── Progreso de XP ──
-  const xpPct = $derived(Math.round((perfil.xp / perfil.xpMeta) * 100));
+  const xpPct = $derived(Math.round((perfil.xpEnNivel / perfil.xpPorNivel) * 100));
   const xpFalta = $derived(perfil.xpMeta - perfil.xp);
   const num = (n: number) => n.toLocaleString('es-MX');
   const iniciales = (nombre: string) =>
@@ -173,7 +173,7 @@
           <div class="rounded-lg border border-tezcat-border bg-tezcat-surface p-3">
             <div class="mb-1.5 flex justify-between gap-2 font-mono text-[10px] tracking-wider uppercase">
               <span class="text-tezcat-textSecondary">Progreso hacia Nivel {perfil.nivelSiguiente}</span>
-              <span class="font-bold text-tezcat-cyan">{num(perfil.xp)} / {num(perfil.xpMeta)} XP</span>
+              <span class="font-bold text-tezcat-cyan">{num(perfil.xpEnNivel)} / {num(perfil.xpPorNivel)} XP</span>
             </div>
             <div class="h-2 overflow-hidden rounded bg-tezcat-bg">
               <div class="h-full bg-tezcat-cyan shadow-glow-cyan-sm transition-all duration-700" style="width: {xpPct}%"></div>

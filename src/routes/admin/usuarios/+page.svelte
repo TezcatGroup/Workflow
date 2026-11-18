@@ -153,6 +153,19 @@
           </form>
           <button type="button" disabled={u.id === data.admin.id} onclick={() => confirmarEliminacion(u)} class="inline-flex items-center gap-2 rounded-lg border border-red-400/30 px-3 py-2 text-xs font-semibold text-red-300 hover:bg-red-400/10 focus-visible:outline-2 focus-visible:outline-red-300 disabled:cursor-not-allowed disabled:opacity-40" title={u.id === data.admin.id ? 'No puedes eliminar tu propia cuenta' : `Eliminar ${u.email}`}><span aria-hidden="true" class="material-symbols-outlined text-base">delete</span>Eliminar cuenta</button>
           </div>
+          {#if u.activo && u.rol !== 'ADMIN'}
+          <details class="border-t border-tezcat-border pt-3">
+            <summary class="cursor-pointer text-sm text-tezcat-cyan">Restablecer contraseña</summary>
+            <p class="mt-3 text-sm text-tezcat-textSecondary">Verifica la identidad de la persona antes de continuar. Se cerrarán todas sus sesiones. Comparte la contraseña de forma privada y pídele que la cambie desde Perfil.</p>
+            <form method="POST" action="?/restablecerPassword" use:enhance class="mt-4 grid gap-3 md:grid-cols-3">
+              <input type="hidden" name="id" value={u.id} />
+              <label>Nueva contraseña<input class={campo} type="password" name="nueva" minlength="12" maxlength="128" autocomplete="new-password" required /></label>
+              <label>Confirmar contraseña<input class={campo} type="password" name="confirmacion" minlength="12" maxlength="128" autocomplete="new-password" required /></label>
+              <label>Tu contraseña de administrador<input class={campo} type="password" name="passwordAdmin" autocomplete="current-password" required /></label>
+              <button class={boton} type="submit">Restablecer y cerrar sesiones</button>
+            </form>
+          </details>
+          {/if}
         </article>
       {:else}
         <p class="rounded-xl border border-tezcat-border bg-tezcat-card p-8 text-center text-sm text-tezcat-textSecondary">

@@ -2,6 +2,7 @@ import { fail, isHttpError, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { campo } from '$lib/server/admin';
 import {
+  editarTarea,
   cambiarEstado,
   obtenerDetalle,
   toggleCriterioBD,
@@ -26,6 +27,10 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 };
 
 export const actions: Actions = {
+  editar: async ({ locals, params, request }) => {
+    try { await editarTarea(locals.user, params.id, await request.formData()); return { ok: 'Tarea actualizada. Los cambios quedaron en su historial.' }; }
+    catch (e) { if (isHttpError(e)) return fail(e.status, { error: e.body.message }); throw e; }
+  },
   cambiarEstado: async ({ locals, params, request }) => {
     const user = locals.user;
     if (!user) redirect(303, '/login');
