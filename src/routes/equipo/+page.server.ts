@@ -10,7 +10,7 @@ export const load: PageServerLoad = async ({ locals }) => {
   if (user.rol !== 'ENCARGADO') error(403, 'Acceso restringido a encargados');
   if (!user.departamentoId) return { user, departamento: null, miembros: [] };
   const [departamento] = await db.select({ nombre: departamentos.nombre }).from(departamentos).where(eq(departamentos.id, user.departamentoId));
-  const miembros = await db.select({ id: usuarios.id, nombre: usuarios.nombre, rol: usuarios.rol })
+  const miembros = await db.select({ id: usuarios.id, nombre: usuarios.nombre, rol: usuarios.rol, fotoPerfil: usuarios.fotoPerfil })
     .from(usuarios).where(and(eq(usuarios.departamentoId, user.departamentoId),
       eq(usuarios.activo, true))).orderBy(asc(usuarios.nombre));
   return { user, departamento: departamento?.nombre ?? null, miembros };

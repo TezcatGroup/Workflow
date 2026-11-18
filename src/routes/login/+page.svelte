@@ -46,6 +46,7 @@
       {#if page.url.searchParams.get('password') === 'updated'}
         <p role="status" class="mb-4 rounded-lg border border-emerald-400/40 bg-emerald-400/10 p-3 text-sm text-emerald-300">Contraseña actualizada. Inicia sesión con tu nueva contraseña.</p>
       {/if}
+      <details class="mb-4 text-sm text-tezcat-textSecondary"><summary class="cursor-pointer text-tezcat-cyan">¿Olvidaste tu contraseña?</summary><p class="mt-2">Contacta a tu administrador para verificar tu identidad y restablecer el acceso. Si tu cuenta ya está registrada, también puedes entrar con Google. Las cuentas administrativas requieren asistencia de quien mantiene la instalación.</p></details>
       {#if data.googleError}
         <p role="alert" class="mb-4 rounded-lg border border-tezcat-danger/40 bg-tezcat-danger/10 p-3 text-sm text-red-300">{data.googleError}</p>
       {/if}

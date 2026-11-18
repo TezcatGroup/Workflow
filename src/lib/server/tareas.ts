@@ -66,6 +66,25 @@ export function exigirEncargado(user: App.Locals['user']): Encargado {
   return { ...user, departamentoId: user.departamentoId };
 }
 
+export async function editarTarea(user: App.Locals['user'], id: string, form: FormData) {
+  const actor = exigirEncargado(user);
+  const titulo = campo(form, 'titulo'), descripcion = campo(form, 'descripcion');
+  const prioridad = campo(form, 'prioridad'), motivo = campo(form, 'motivo');
+  const fechaLimite = new Date(campo(form, 'fechaLimite'));
+  if (!/^[0-9a-f-]{36}$/i.test(id) || !titulo || titulo.length > MAX_TITULO || descripcion.length > MAX_DESCRIPCION || !PRIORIDADES.includes(prioridad as typeof PRIORIDADES[number]) || !motivo || motivo.length > 1000 || !Number.isFinite(fechaLimite.getTime())) error(400, 'Revisa título, descripción, prioridad, fecha y motivo');
+  await db.transaction(async tx => {
+    const [tarea] = await tx.select().from(tareas).where(eq(tareas.id, id)).for('update');
+    if (!tarea || tarea.departamentoId !== actor.departamentoId) error(404, 'Tarea no disponible');
+    if (!['ASIGNADA', 'EN_PROCESO'].includes(tarea.estado)) error(400, 'Solo se editan tareas asignadas o en proceso');
+    if (campo(form, 'version') !== tarea.actualizadoEn.toISOString()) error(409, 'La tarea cambió. Recarga la página antes de editarla');
+    if (fechaLimite.getTime() !== tarea.fechaLimite.getTime() && fechaLimite.getTime() <= Date.now()) error(400, 'La nueva fecha límite debe estar en el futuro');
+    const antes = { titulo: tarea.titulo, descripcion: tarea.descripcion, prioridad: tarea.prioridad, fechaLimite: tarea.fechaLimite.toISOString() };
+    const despues = { titulo, descripcion, prioridad, fechaLimite: fechaLimite.toISOString() };
+    await tx.update(tareas).set({ titulo, descripcion, prioridad, fechaLimite, actualizadoEn: new Date() }).where(eq(tareas.id, id));
+    await tx.insert(tareaEventos).values({ tareaId: id, actorId: actor.id, tipo: 'TAREA_EDITADA', detalle: { antes, despues, motivo } });
+  });
+}
+
 /* ------------------------------------------------------------------ */
 /* TW-10: Tipos y constructor del Timeline Unificado (Chat + Eventos) */
 /* ------------------------------------------------------------------ */

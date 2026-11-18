@@ -7,6 +7,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 
   const ruta = event.url.pathname;
   const protegida = ruta === '/dashboard' || ruta.startsWith('/dashboard/') ||
+    ruta === '/proyectos' || ruta.startsWith('/proyectos/') ||
     ruta === '/perfil' || ruta.startsWith('/perfil/') ||
     ruta === '/equipo' || ruta.startsWith('/equipo/') ||
     ruta === '/tareas' || ruta.startsWith('/tareas/') ||

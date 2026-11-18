@@ -24,6 +24,7 @@
       ['Tareas', '/tareas'],
       ['Usuarios', '/admin/usuarios'],
       ['Departamentos', '/admin/departamentos'],
+      ['Proyectos', '/proyectos'],
       ['Etiquetas', '/admin/etiquetas'],
       ['Recompensas', '/admin/recompensas'],
       ['Auditoría', '/admin/auditoria'],
@@ -35,6 +36,7 @@
       ['Muro', '/muro'],
       ['Tienda', '/tienda'],
       ['Equipo', '/equipo'],
+      ['Proyectos', '/proyectos'],
       ['Perfil', '/perfil']
     ],
     MIEMBRO: [

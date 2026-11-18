@@ -3,6 +3,8 @@
   import { invalidateAll } from '$app/navigation';
   import type { ActionData, PageData } from './$types';
   import EncabezadoApp from '$lib/components/EncabezadoApp.svelte';
+  import EditarTarea from '$lib/components/EditarTarea.svelte';
+  import DetalleAuditoria from '$lib/components/DetalleAuditoria.svelte';
   import Panel from '$lib/components/Panel.svelte';
 
   let { data, form }: { data: PageData; form: ActionData } = $props();
@@ -105,6 +107,7 @@
     if (e.tipo === 'REASIGNACION_RECHAZADA') {
       return 'Solicitud de cambio de asignación denegada';
     }
+    if (e.tipo === 'TAREA_EDITADA') return 'Datos de la tarea actualizados';
     return e.tipo;
   }
 
@@ -414,6 +417,9 @@
     <!-- =============================================================== -->
     <!-- TW-11: PANEL EXCLUSIVO DEL ENCARGADO PARA RESOLVER REASIGNACIÓN -->
     <!-- =============================================================== -->
+    {#if data.user.rol === 'ENCARGADO' && data.user.departamentoId === data.tarea.departamentoId && ['ASIGNADA', 'EN_PROCESO'].includes(data.tarea.estado)}
+      {#key data.tarea.actualizadoEn}<EditarTarea tarea={data.tarea} />{/key}
+    {/if}
     {#if esEncargadoORevisor && data.solicitudPendiente}
       <section class="rounded-2xl border border-amber-400/50 bg-tezcat-card/95 p-5 shadow-2xl backdrop-blur-md">
         <div class="flex flex-wrap items-start justify-between gap-3">
@@ -882,7 +888,7 @@
                           {claseEvento(item)}"
                       >
                         <span class="material-symbols-outlined text-xs">{iconoEvento(item)}</span>
-                        <span class="font-semibold">{textoEvento(item)}</span>
+                        <span class="font-semibold">{textoEvento(item)}</span>{#if item.tipo === 'TAREA_EDITADA'}<details class="mt-2"><summary class="cursor-pointer">Ver cambios</summary><DetalleAuditoria detalle={item.detalle} /></details>{/if}
                         <span class="opacity-75">
                           · {fecha(item.creadoEn)}{item.actorNombre ? ` · ${item.actorNombre}` : ''}
                         </span>
