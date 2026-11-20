@@ -21,7 +21,7 @@ import {
   tareaMensajes
 } from '$lib/server/db/schema';
 import { campo } from '$lib/server/admin';
-import { crearNotificacionBD } from '$lib/server/notificaciones';
+import { crearNotificacionBD, insertarNotificacionesBD } from '$lib/server/notificaciones';
 import fs from 'fs/promises';
 import path from 'path';
 import crypto from 'crypto';
@@ -78,8 +78,28 @@ export async function editarTarea(user: App.Locals['user'], id: string, form: Fo
     if (!['ASIGNADA', 'EN_PROCESO'].includes(tarea.estado)) error(400, 'Solo se editan tareas asignadas o en proceso');
     if (campo(form, 'version') !== tarea.actualizadoEn.toISOString()) error(409, 'La tarea cambió. Recarga la página antes de editarla');
     if (fechaLimite.getTime() !== tarea.fechaLimite.getTime() && fechaLimite.getTime() <= Date.now()) error(400, 'La nueva fecha límite debe estar en el futuro');
-    const antes = { titulo: tarea.titulo, descripcion: tarea.descripcion, prioridad: tarea.prioridad, fechaLimite: tarea.fechaLimite.toISOString() };
-    const despues = { titulo, descripcion, prioridad, fechaLimite: fechaLimite.toISOString() };
+    const anteriores = await tx.select({ id: tareaEtiquetas.etiquetaId }).from(tareaEtiquetas)
+      .where(eq(tareaEtiquetas.tareaId, id)).orderBy(asc(tareaEtiquetas.etiquetaId));
+    const etiquetasAntes = anteriores.map(({ id }) => id);
+    const etiquetasDespues = form.has('editarEtiquetas')
+      ? [...new Set(form.getAll('etiquetas').map(String))].sort()
+      : etiquetasAntes;
+    if (etiquetasDespues.some((id) => !esUuid(id))) error(400, 'Etiqueta inválida');
+    const nuevas = etiquetasDespues.filter((id) => !etiquetasAntes.includes(id));
+    const retiradas = etiquetasAntes.filter((id) => !etiquetasDespues.includes(id));
+    if (nuevas.length) {
+      const validas = await tx.select({ id: etiquetas.id }).from(etiquetas)
+        .where(and(inArray(etiquetas.id, nuevas), eq(etiquetas.departamentoId, actor.departamentoId), eq(etiquetas.activo, true)))
+        .for('share');
+      if (validas.length !== nuevas.length) error(400, 'Las etiquetas nuevas deben estar activas y pertenecer a tu departamento');
+      await tx.insert(tareaEtiquetas).values(nuevas.map((etiquetaId) => ({ tareaId: id, etiquetaId })));
+    }
+    if (retiradas.length) {
+      await tx.delete(tareaEtiquetas).where(and(eq(tareaEtiquetas.tareaId, id), inArray(tareaEtiquetas.etiquetaId, retiradas)));
+    }
+    const antes = { titulo: tarea.titulo, descripcion: tarea.descripcion, prioridad: tarea.prioridad,
+      fechaLimite: tarea.fechaLimite.toISOString(), etiquetas: etiquetasAntes };
+    const despues = { titulo, descripcion, prioridad, fechaLimite: fechaLimite.toISOString(), etiquetas: etiquetasDespues };
     await tx.update(tareas).set({ titulo, descripcion, prioridad, fechaLimite, actualizadoEn: new Date() }).where(eq(tareas.id, id));
     await tx.insert(tareaEventos).values({ tareaId: id, actorId: actor.id, tipo: 'TAREA_EDITADA', detalle: { antes, despues, motivo } });
   });
@@ -919,12 +939,17 @@ export async function obtenerDetalle(actor: Actor, tareaId: string) {
       .orderBy(desc(tareaRevisiones.creadaEn))
   ]);
 
-  const [etiquetasAsignadas, departamento] = await Promise.all([
+  const [etiquetasAsignadas, departamento, etiquetasDisponibles] = await Promise.all([
     db.select({ id: etiquetas.id, nombre: etiquetas.nombre, categoria: etiquetas.categoria, activo: etiquetas.activo })
       .from(tareaEtiquetas).innerJoin(etiquetas, eq(etiquetas.id, tareaEtiquetas.etiquetaId))
       .where(eq(tareaEtiquetas.tareaId, tarea.id)).orderBy(asc(etiquetas.nombre)),
     tarea.departamentoId ? db.select({ id: departamentos.id, nombre: departamentos.nombre }).from(departamentos)
-      .where(eq(departamentos.id, tarea.departamentoId)).limit(1) : Promise.resolve([])
+      .where(eq(departamentos.id, tarea.departamentoId)).limit(1) : Promise.resolve([]),
+    esEncargadoDelDepartamento(actor, tarea) && actor.departamentoId && ['ASIGNADA', 'EN_PROCESO'].includes(tarea.estado)
+      ? db.select({ id: etiquetas.id, nombre: etiquetas.nombre, activo: etiquetas.activo }).from(etiquetas)
+        .where(and(eq(etiquetas.departamentoId, actor.departamentoId), eq(etiquetas.activo, true)))
+        .orderBy(asc(etiquetas.nombre))
+      : Promise.resolve([])
   ]);
   const persona = (id: string | null) => personas.find((p) => p.id === id) ?? null;
 
@@ -990,6 +1015,7 @@ export async function obtenerDetalle(actor: Actor, tareaId: string) {
       actualizadoEn: tarea.actualizadoEn
     },
     etiquetas: etiquetasAsignadas,
+    etiquetasDisponibles,
     departamento: departamento[0] ?? null,
     creador: persona(tarea.creadoPorId),
     responsable: persona(tarea.responsableId),
@@ -1471,30 +1497,35 @@ export async function obtenerComentariosBD(tareaId: string): Promise<ComentarioT
 // ELIMINACIÓN DE TAREA
 // =========================================================================
 export async function eliminarTarea(actor: Actor, tareaId: string) {
-  const tarea = await cargarTarea(tareaId);
-  if (!puedeVer(actor, tarea)) {
-    error(403, 'No tienes acceso a esta tarea');
-  }
+  if (!esUuid(tareaId)) error(404, 'Tarea inexistente');
+  await db.transaction(async (tx) => {
+    const [tarea] = await tx.select().from(tareas).where(eq(tareas.id, tareaId)).for('update');
+    if (!tarea) error(404, 'Tarea inexistente');
+    if (!puedeVer(actor, tarea)) error(403, 'No tienes acceso a esta tarea');
+    if (actor.rol !== 'ADMIN' && !esEncargadoDelDepartamento(actor, tarea) && actor.id !== tarea.creadoPorId) {
+      error(403, 'Solo el encargado del departamento o quien creó la tarea puede eliminarla');
+    }
 
-  const esJefeOAutor =
-    actor.rol === 'ADMIN' ||
-    (actor.rol === 'ENCARGADO' && actor.departamentoId === tarea.departamentoId) ||
-    actor.id === tarea.creadoPorId;
-
-  if (!esJefeOAutor) {
-    error(403, 'Solo el encargado del departamento o quien creó la tarea puede eliminarla');
-  }
+    const participantes = [tarea.creadoPorId, tarea.responsableId, tarea.revisorId]
+      .filter((id): id is string => id !== null && id !== actor.id);
+    if (participantes.length) {
+      const destinatarios = await tx.select({ id: usuarios.id }).from(usuarios)
+        .where(and(inArray(usuarios.id, participantes), eq(usuarios.activo, true)));
+      await insertarNotificacionesBD(tx, destinatarios.map(({ id }) => ({
+        usuarioId: id,
+        titulo: `Tarea eliminada: ${recortarTitulo(tarea.titulo)}`,
+        mensaje: `${actor.nombre} eliminó la tarea "${tarea.titulo}".`
+      })));
+    }
+    await tx.delete(tareas).where(eq(tareas.id, tareaId));
+  });
 
   try {
-    const uploadDir = path.resolve('uploads', tarea.id);
-    await fs.rm(uploadDir, { recursive: true, force: true });
-  } catch {
-
+    await fs.rm(path.resolve('uploads', tareaId), { recursive: true, force: true });
+  } catch (err) {
+    console.error('No se pudieron eliminar los archivos de la tarea', tareaId, err);
   }
-
-  await db.delete(tareas).where(eq(tareas.id, tarea.id));
-
-  return { id: tarea.id, eliminada: true };
+  return { id: tareaId, eliminada: true };
 }
 
 /** La condición del UPDATE garantiza una sola asignación incluso con peticiones simultáneas. */

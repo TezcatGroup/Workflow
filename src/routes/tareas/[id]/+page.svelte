@@ -418,7 +418,7 @@
     <!-- TW-11: PANEL EXCLUSIVO DEL ENCARGADO PARA RESOLVER REASIGNACIÓN -->
     <!-- =============================================================== -->
     {#if data.user.rol === 'ENCARGADO' && data.user.departamentoId === data.tarea.departamentoId && ['ASIGNADA', 'EN_PROCESO'].includes(data.tarea.estado)}
-      {#key data.tarea.actualizadoEn}<EditarTarea tarea={data.tarea} />{/key}
+      {#key data.tarea.actualizadoEn}<EditarTarea tarea={data.tarea} asignadas={data.etiquetas} disponibles={data.etiquetasDisponibles} />{/key}
     {/if}
     {#if esEncargadoORevisor && data.solicitudPendiente}
       <section class="rounded-2xl border border-amber-400/50 bg-tezcat-card/95 p-5 shadow-2xl backdrop-blur-md">

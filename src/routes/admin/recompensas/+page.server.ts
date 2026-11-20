@@ -1,5 +1,5 @@
 import { fail, type Actions } from '@sveltejs/kit';
-import { asc, desc, eq, inArray } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, ne } from 'drizzle-orm';
 import type { PageServerLoad } from './$types';
 import { db } from '$lib/server/db';
 import {
@@ -10,6 +10,7 @@ import {
   usuarios
 } from '$lib/server/db/schema';
 import { campo, exigirAdmin } from '$lib/server/admin';
+import { insertarNotificacionesBD } from '$lib/server/notificaciones';
 
 const ACCIONES_AUDITORIA_RECOMPENSAS = [
   'RECOMPENSA_CREADA',
@@ -97,6 +98,15 @@ export const actions: Actions = {
             activo: true
           })
           .returning({ id: recompensas.id });
+
+        const destinatarios = await tx.select({ id: usuarios.id }).from(usuarios)
+          .where(and(eq(usuarios.activo, true), ne(usuarios.rol, 'ADMIN')));
+        await insertarNotificacionesBD(tx, destinatarios.map(({ id }) => ({
+          usuarioId: id,
+          titulo: `Producto nuevo en la tienda: ${nombre}`,
+          mensaje: `"${nombre}" ya está en el catálogo por ${costoPuntos} monedas.`,
+          enlace: '/tienda'
+        })));
 
         // TW-21: Registrar auditoría administrativa de creación en el catálogo
         await tx.insert(auditoriaUsuarios).values({
