@@ -79,7 +79,7 @@ try {
     await status(await req('/perfil?/guardarFoto',users.member.cookie,{method:'POST',body:f}),200);
     await status(await req(`/equipo/${users.member.id}/foto`,users.manager.cookie),200);
     await status(await req(`/equipo/${users.member.id}/foto`,users.other.cookie),404);
-    await status(await req(`/equipo/${users.member.id}/foto`,users.member.cookie),403);
+    await status(await req(`/equipo/${users.member.id}/foto`,users.member.cookie),200);
     assert.ok((await (await req('/equipo',users.manager.cookie)).text()).includes(`/equipo/${users.member.id}/foto`));
   });
   await test('Restablecimiento: permisos, confirmación, contraseña anterior revocada y sesiones cerradas',async()=>{

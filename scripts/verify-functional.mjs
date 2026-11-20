@@ -58,7 +58,7 @@ try {
     for (const path of ['/dashboard','/tareas','/muro','/perfil','/equipo','/tienda','/notificaciones','/tareas/nueva']) {
       for (const key of ['admin','manager','member']) {
         let status = 200;
-        if (path === '/equipo' && key !== 'manager') status = 403;
+        if (path === '/equipo' && key === 'admin') status = 403;
         if (path === '/tareas/nueva' && key !== 'manager') status = 403;
         if (['/tienda','/notificaciones','/dashboard'].includes(path) && key === 'admin') status = 303;
         const r = await req(path, actors[key]); routeMatrix.push({ path, role:key, status:r.status }); await expect(r, status);

@@ -41,6 +41,7 @@
     ],
     MIEMBRO: [
       ['Inicio', '/dashboard'],
+      ['Equipo', '/equipo'],
       ['Tareas', '/tareas'],
       ['Muro', '/muro'],
       ['Tienda', '/tienda'],
