@@ -5,6 +5,7 @@ import {
   etiquetas,
   tareaEtiquetas,
   departamentos,
+  contribucionesOpcionales,
   movimientosXp,
   movimientosPuntos,
   ramas,
@@ -21,7 +22,7 @@ import {
   tareaMensajes
 } from '$lib/server/db/schema';
 import { campo } from '$lib/server/admin';
-import { crearNotificacionBD } from '$lib/server/notificaciones';
+import { crearNotificacionBD, insertarNotificacionesBD } from '$lib/server/notificaciones';
 import fs from 'fs/promises';
 import path from 'path';
 import crypto from 'crypto';
@@ -70,16 +71,37 @@ export async function editarTarea(user: App.Locals['user'], id: string, form: Fo
   const actor = exigirEncargado(user);
   const titulo = campo(form, 'titulo'), descripcion = campo(form, 'descripcion');
   const prioridad = campo(form, 'prioridad'), motivo = campo(form, 'motivo');
-  const fechaLimite = new Date(campo(form, 'fechaLimite'));
-  if (!/^[0-9a-f-]{36}$/i.test(id) || !titulo || titulo.length > MAX_TITULO || descripcion.length > MAX_DESCRIPCION || !PRIORIDADES.includes(prioridad as typeof PRIORIDADES[number]) || !motivo || motivo.length > 1000 || !Number.isFinite(fechaLimite.getTime())) error(400, 'Revisa título, descripción, prioridad, fecha y motivo');
+  const fechaTxt = campo(form, 'fechaLimite');
+  const fechaLimite = fechaTxt ? new Date(fechaTxt) : null;
+  if (!/^[0-9a-f-]{36}$/i.test(id) || !titulo || titulo.length > MAX_TITULO || descripcion.length > MAX_DESCRIPCION || !PRIORIDADES.includes(prioridad as typeof PRIORIDADES[number]) || !motivo || motivo.length > 1000 || (fechaLimite && !Number.isFinite(fechaLimite.getTime()))) error(400, 'Revisa título, descripción, prioridad, fecha y motivo');
   await db.transaction(async tx => {
     const [tarea] = await tx.select().from(tareas).where(eq(tareas.id, id)).for('update');
     if (!tarea || tarea.departamentoId !== actor.departamentoId) error(404, 'Tarea no disponible');
     if (!['ASIGNADA', 'EN_PROCESO'].includes(tarea.estado)) error(400, 'Solo se editan tareas asignadas o en proceso');
     if (campo(form, 'version') !== tarea.actualizadoEn.toISOString()) error(409, 'La tarea cambió. Recarga la página antes de editarla');
-    if (fechaLimite.getTime() !== tarea.fechaLimite.getTime() && fechaLimite.getTime() <= Date.now()) error(400, 'La nueva fecha límite debe estar en el futuro');
-    const antes = { titulo: tarea.titulo, descripcion: tarea.descripcion, prioridad: tarea.prioridad, fechaLimite: tarea.fechaLimite.toISOString() };
-    const despues = { titulo, descripcion, prioridad, fechaLimite: fechaLimite.toISOString() };
+    if (fechaLimite && fechaLimite.getTime() !== tarea.fechaLimite?.getTime() && fechaLimite.getTime() <= Date.now()) error(400, 'La nueva fecha límite debe estar en el futuro');
+    const anteriores = await tx.select({ id: tareaEtiquetas.etiquetaId }).from(tareaEtiquetas)
+      .where(eq(tareaEtiquetas.tareaId, id)).orderBy(asc(tareaEtiquetas.etiquetaId));
+    const etiquetasAntes = anteriores.map(({ id }) => id);
+    const etiquetasDespues = form.has('editarEtiquetas')
+      ? [...new Set(form.getAll('etiquetas').map(String))].sort()
+      : etiquetasAntes;
+    if (etiquetasDespues.some((id) => !esUuid(id))) error(400, 'Etiqueta inválida');
+    const nuevas = etiquetasDespues.filter((id) => !etiquetasAntes.includes(id));
+    const retiradas = etiquetasAntes.filter((id) => !etiquetasDespues.includes(id));
+    if (nuevas.length) {
+      const validas = await tx.select({ id: etiquetas.id }).from(etiquetas)
+        .where(and(inArray(etiquetas.id, nuevas), eq(etiquetas.departamentoId, actor.departamentoId), eq(etiquetas.activo, true)))
+        .for('share');
+      if (validas.length !== nuevas.length) error(400, 'Las etiquetas nuevas deben estar activas y pertenecer a tu departamento');
+      await tx.insert(tareaEtiquetas).values(nuevas.map((etiquetaId) => ({ tareaId: id, etiquetaId })));
+    }
+    if (retiradas.length) {
+      await tx.delete(tareaEtiquetas).where(and(eq(tareaEtiquetas.tareaId, id), inArray(tareaEtiquetas.etiquetaId, retiradas)));
+    }
+    const antes = { titulo: tarea.titulo, descripcion: tarea.descripcion, prioridad: tarea.prioridad,
+      fechaLimite: tarea.fechaLimite?.toISOString() ?? null, etiquetas: etiquetasAntes };
+    const despues = { titulo, descripcion, prioridad, fechaLimite: fechaLimite?.toISOString() ?? null, etiquetas: etiquetasDespues };
     await tx.update(tareas).set({ titulo, descripcion, prioridad, fechaLimite, actualizadoEn: new Date() }).where(eq(tareas.id, id));
     await tx.insert(tareaEventos).values({ tareaId: id, actorId: actor.id, tipo: 'TAREA_EDITADA', detalle: { antes, despues, motivo } });
   });
@@ -136,15 +158,18 @@ export function construirTimeline(
 /* TW-11: Cálculo de ventana del 20% en días enteros para delegar     */
 /* ------------------------------------------------------------------ */
 
-export function calcularPlazoReasignacion(creadoEn: Date, fechaLimite: Date) {
+export function calcularPlazoReasignacion(creadoEn: Date, fechaLimite: Date | null) {
+  if (!fechaLimite) return null;
   const inicioMs = new Date(creadoEn).getTime();
   const finMs = new Date(fechaLimite).getTime();
   const diasTotales = Math.max(1, Math.ceil((finMs - inicioMs) / MS_POR_DIA));
 
   const diasPermitidos = Math.max(1, Math.round(diasTotales * 0.2));
-  const fechaLimiteSolicitud = new Date(inicioMs + diasPermitidos * MS_POR_DIA);
+  const limiteSolicitudMs = Math.min(inicioMs + diasPermitidos * MS_POR_DIA, finMs);
+  const fechaLimiteSolicitud = new Date(limiteSolicitudMs);
   const ahora = Date.now();
-  const dentroDePlazo = ahora <= fechaLimiteSolicitud.getTime();
+  const dentroDePlazo = ahora < limiteSolicitudMs;
+  const tareaVencida = ahora >= finMs;
   const diasRestantesSolicitud = Math.max(
     0,
     Math.ceil((fechaLimiteSolicitud.getTime() - ahora) / MS_POR_DIA)
@@ -155,6 +180,7 @@ export function calcularPlazoReasignacion(creadoEn: Date, fechaLimite: Date) {
     diasPermitidos,
     fechaLimiteSolicitud,
     dentroDePlazo,
+    tareaVencida,
     diasRestantesSolicitud
   };
 }
@@ -181,8 +207,8 @@ function validarDescripcion(value: string): string | null {
   return value;
 }
 
-function validarFechaLimite(value: string): Date {
-  if (!value) error(400, 'La fecha límite es obligatoria');
+function validarFechaLimite(value: string): Date | null {
+  if (!value) return null;
   const texto = /^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T23:59:59` : value;
   const fecha = new Date(texto);
   if (Number.isNaN(fecha.getTime())) error(400, 'La fecha límite es inválida');
@@ -214,6 +240,7 @@ function validarRecompensa(value: string, nombre: string): number {
 
 function validarCriterios(valores: FormDataEntryValue[]): string[] {
   const criterios = valores.map((v) => String(v).trim()).filter((v) => v.length > 0);
+  if (!criterios.length) error(400, 'Agrega al menos un criterio de aceptación');
   if (criterios.length > MAX_CRITERIOS) error(400, `Máximo ${MAX_CRITERIOS} criterios por tarea`);
   if (criterios.some((c) => c.length > MAX_CRITERIO)) {
     error(400, `Cada criterio puede tener máximo ${MAX_CRITERIO} caracteres`);
@@ -339,17 +366,15 @@ export async function crearTarea(actor: Encargado, form: FormData) {
     }).returning({ id: tareas.id, numero: tareas.numero });
 
     if (etiquetaIds.length) await tx.insert(tareaEtiquetas).values(etiquetaIds.map((etiquetaId) => ({ tareaId: tarea.id, etiquetaId })));
-    if (criterios.length > 0) {
-      await tx.insert(tareaCriterios).values(
-        criterios.map((descripcionCriterio) => ({ tareaId: tarea.id, descripcion: descripcionCriterio }))
-      );
-    }
+    await tx.insert(tareaCriterios).values(
+      criterios.map((descripcionCriterio) => ({ tareaId: tarea.id, descripcion: descripcionCriterio }))
+    );
 
     await tx.insert(tareaEventos).values({
       tareaId: tarea.id,
       actorId: actor.id,
       tipo: 'TAREA_CREADA',
-      detalle: { responsableId, revisorId, fechaLimite: fechaLimite.toISOString(), criterios: criterios.length }
+      detalle: { responsableId, revisorId, fechaLimite: fechaLimite?.toISOString() ?? null, criterios: criterios.length }
     });
 
     return tarea;
@@ -361,7 +386,7 @@ export async function crearTarea(actor: Encargado, form: FormData) {
       usuarioId: responsableId,
       tareaId: nuevaTarea.id,
       titulo: `📌 Nueva tarea asignada: ${recortarTitulo(titulo)}`,
-      mensaje: `${actor.nombre} te asignó la actividad "${titulo}" con fecha límite ${fechaLimite.toLocaleDateString('es-MX')}.`,
+      mensaje: `${actor.nombre} te asignó la actividad "${titulo}"${fechaLimite ? ` con fecha límite ${fechaLimite.toLocaleDateString('es-MX')}` : ''}.`,
       enlace: `/tareas/${nuevaTarea.id}`
     });
   }
@@ -466,43 +491,43 @@ export async function cambiarEstado(
   const esAprobacionRevision = tarea.estado === 'EN_REVISION' && destino === 'TERMINADA';
   const observaciones = observacionesTxt.trim();
 
-  const criterios = await db
-    .select({
-      id: tareaCriterios.id,
-      completado: tareaCriterios.completado,
-      verificadoEncargado: tareaCriterios.verificadoEncargado
-    })
-    .from(tareaCriterios)
-    .where(eq(tareaCriterios.tareaId, tarea.id));
-
-  if (destino === 'EN_REVISION' && criterios.some((c) => !c.completado)) {
-    error(400, 'Debes marcar todos los criterios de aceptación antes de enviar la tarea a revisión.');
-  }
-  if (esAprobacionRevision && criterios.some((c) => !c.verificadoEncargado)) {
-    error(400, 'Como encargado o revisor, debes verificar todos los criterios antes de aprobar la tarea.');
-  }
-
-  if (esDevolucionRevision) {
-    if (!observaciones) {
-      error(400, 'Escribe un mensaje explicando al miembro por qué se le devuelve la actividad.');
-    }
-    if (observaciones.length > MAX_OBSERVACIONES_REVISION) {
-      error(400, `El mensaje de devolución no puede superar los ${MAX_OBSERVACIONES_REVISION} caracteres.`);
-    }
-    if (criterios.length > 0 && criterios.every((c) => c.verificadoEncargado)) {
-      error(
-        400,
-        'Deja sin verificar en el checklist al menos un criterio que el miembro no haya alcanzado a cumplir antes de devolver la tarea.'
-      );
-    }
-  }
-
   await db.transaction(async (tx) => {
     const actualizadas = await tx.update(tareas)
       .set({ estado: destino, actualizadoEn: new Date() })
       .where(and(eq(tareas.id, tarea.id), eq(tareas.estado, tarea.estado)))
       .returning({ id: tareas.id });
     if (actualizadas.length === 0) error(409, 'La tarea cambió de estado mientras la editabas. Recarga la página');
+
+    const criterios = await tx
+      .select({
+        id: tareaCriterios.id,
+        completado: tareaCriterios.completado,
+        verificadoEncargado: tareaCriterios.verificadoEncargado
+      })
+      .from(tareaCriterios)
+      .where(eq(tareaCriterios.tareaId, tarea.id));
+
+    if (destino === 'EN_REVISION' && criterios.some((c) => !c.completado)) {
+      error(400, 'Debes marcar todos los criterios de aceptación antes de enviar la tarea a revisión.');
+    }
+    if (esAprobacionRevision && criterios.some((c) => !c.verificadoEncargado)) {
+      error(400, 'Como encargado o revisor, debes verificar todos los criterios antes de aprobar la tarea.');
+    }
+
+    if (esDevolucionRevision) {
+      if (!observaciones) {
+        error(400, 'Escribe un mensaje explicando al miembro por qué se le devuelve la actividad.');
+      }
+      if (observaciones.length > MAX_OBSERVACIONES_REVISION) {
+        error(400, `El mensaje de devolución no puede superar los ${MAX_OBSERVACIONES_REVISION} caracteres.`);
+      }
+      if (criterios.length > 0 && criterios.every((c) => c.verificadoEncargado)) {
+        error(
+          400,
+          'Deja sin verificar en el checklist al menos un criterio que el miembro no haya alcanzado a cumplir antes de devolver la tarea.'
+        );
+      }
+    }
 
     if (esDevolucionRevision) {
       await tx
@@ -518,6 +543,7 @@ export async function cambiarEstado(
       });
     } else if (esAprobacionRevision) {
       if (tarea.tipo === 'OPCIONAL' && tarea.responsableId) {
+        await tx.insert(contribucionesOpcionales).values({ tareaId: tarea.id, usuarioId: tarea.responsableId });
         const recompensa = {
           usuarioId: tarea.responsableId,
           tareaId: tarea.id,
@@ -629,41 +655,34 @@ export async function cambiarEstado(
 /* ------------------------------------------------------------------ */
 
 export async function solicitarReasignacionBD(actor: Actor, tareaId: string, motivoTxt: string) {
-  const tarea = await cargarTarea(tareaId);
-  if (actor.id !== tarea.responsableId) {
-    error(403, 'Solo el miembro actualmente responsable de la tarea puede solicitar su reasignación.');
-  }
-  if (tarea.estado !== 'ASIGNADA' && tarea.estado !== 'EN_PROCESO') {
-    error(400, 'Solo puedes solicitar cambio de asignación cuando la tarea está Asignada o En proceso.');
-  }
-
-  const plazo = calcularPlazoReasignacion(tarea.creadoEn, tarea.fechaLimite);
-  if (!plazo.dentroDePlazo) {
-    error(
-      400,
-      `El plazo del 20% (${plazo.diasPermitidos} día${plazo.diasPermitidos === 1 ? '' : 's'}) para solicitar reasignación ya expiró.`
-    );
-  }
-
+  if (!esUuid(tareaId)) error(404, 'Tarea inexistente');
   const motivo = motivoTxt.trim();
   if (!motivo) error(400, 'Debes escribir el motivo por el cual solicitas el cambio de asignación.');
   if (motivo.length > MAX_MOTIVO_DELEGACION) {
     error(400, `El motivo no puede superar los ${MAX_MOTIVO_DELEGACION} caracteres.`);
   }
 
-  const [pendiente] = await db
-    .select({ id: tareaDelegaciones.id })
-    .from(tareaDelegaciones)
-    .where(and(eq(tareaDelegaciones.tareaId, tarea.id), eq(tareaDelegaciones.estado, 'PENDIENTE')))
-    .limit(1);
+  const tarea = await db.transaction(async (tx) => {
+    const [actual] = await tx.select().from(tareas).where(eq(tareas.id, tareaId)).for('update');
+    if (!actual) error(404, 'Tarea inexistente');
+    if (actor.id !== actual.responsableId) {
+      error(403, 'Solo el miembro actualmente responsable de la tarea puede solicitar su reasignación.');
+    }
+    if (actual.estado !== 'ASIGNADA' && actual.estado !== 'EN_PROCESO') {
+      error(400, 'Solo puedes solicitar cambio de asignación cuando la tarea está Asignada o En proceso.');
+    }
 
-  if (pendiente) {
-    error(400, 'Ya existe una solicitud de reasignación pendiente de revisión por el encargado.');
-  }
+    const plazo = calcularPlazoReasignacion(actual.creadoEn, actual.fechaLimite);
+    if (plazo?.tareaVencida) error(400, 'La tarea venció. Ya no puedes solicitar su reasignación.');
+    if (plazo && !plazo.dentroDePlazo) error(400, 'El plazo para solicitar la reasignación ya expiró.');
 
-  await db.transaction(async (tx) => {
+    const [pendiente] = await tx.select({ id: tareaDelegaciones.id }).from(tareaDelegaciones)
+      .where(and(eq(tareaDelegaciones.tareaId, actual.id), eq(tareaDelegaciones.estado, 'PENDIENTE')))
+      .limit(1);
+    if (pendiente) error(400, 'Ya existe una solicitud de reasignación pendiente de revisión por el encargado.');
+
     await tx.insert(tareaDelegaciones).values({
-      tareaId: tarea.id,
+      tareaId: actual.id,
       solicitanteId: actor.id,
       destinatarioId: null,
       motivo,
@@ -671,11 +690,12 @@ export async function solicitarReasignacionBD(actor: Actor, tareaId: string, mot
     });
 
     await tx.insert(tareaEventos).values({
-      tareaId: tarea.id,
+      tareaId: actual.id,
       actorId: actor.id,
       tipo: 'SOLICITUD_REASIGNACION',
       detalle: { motivo }
     });
+    return actual;
   });
 
   const destinatarioJefe = tarea.revisorId ?? tarea.creadoPorId;
@@ -919,12 +939,17 @@ export async function obtenerDetalle(actor: Actor, tareaId: string) {
       .orderBy(desc(tareaRevisiones.creadaEn))
   ]);
 
-  const [etiquetasAsignadas, departamento] = await Promise.all([
+  const [etiquetasAsignadas, departamento, etiquetasDisponibles] = await Promise.all([
     db.select({ id: etiquetas.id, nombre: etiquetas.nombre, categoria: etiquetas.categoria, activo: etiquetas.activo })
       .from(tareaEtiquetas).innerJoin(etiquetas, eq(etiquetas.id, tareaEtiquetas.etiquetaId))
       .where(eq(tareaEtiquetas.tareaId, tarea.id)).orderBy(asc(etiquetas.nombre)),
     tarea.departamentoId ? db.select({ id: departamentos.id, nombre: departamentos.nombre }).from(departamentos)
-      .where(eq(departamentos.id, tarea.departamentoId)).limit(1) : Promise.resolve([])
+      .where(eq(departamentos.id, tarea.departamentoId)).limit(1) : Promise.resolve([]),
+    esEncargadoDelDepartamento(actor, tarea) && actor.departamentoId && ['ASIGNADA', 'EN_PROCESO'].includes(tarea.estado)
+      ? db.select({ id: etiquetas.id, nombre: etiquetas.nombre, activo: etiquetas.activo }).from(etiquetas)
+        .where(and(eq(etiquetas.departamentoId, actor.departamentoId), eq(etiquetas.activo, true)))
+        .orderBy(asc(etiquetas.nombre))
+      : Promise.resolve([])
   ]);
   const persona = (id: string | null) => personas.find((p) => p.id === id) ?? null;
 
@@ -990,6 +1015,7 @@ export async function obtenerDetalle(actor: Actor, tareaId: string) {
       actualizadoEn: tarea.actualizadoEn
     },
     etiquetas: etiquetasAsignadas,
+    etiquetasDisponibles,
     departamento: departamento[0] ?? null,
     creador: persona(tarea.creadoPorId),
     responsable: persona(tarea.responsableId),
@@ -1184,48 +1210,37 @@ export async function toggleCriterioBD(
   criterioId: string,
   modo: 'RESPONSABLE' | 'ENCARGADO'
 ) {
-  const tarea = await cargarTarea(tareaId);
-  const { acceso, esExResponsable } = await puedeVerConReasignacion(actor, tarea);
-  if (!acceso) error(403, 'No tienes acceso a esta tarea');
-  if (esExResponsable) error(403, 'Se ha validado la reasignación de esta actividad; ya no puedes modificar el checklist.');
-  if (actor.rol === 'ADMIN') error(403, 'El administrador solo tiene permisos de lectura');
+  if (!esUuid(tareaId)) error(404, 'Tarea inexistente');
   if (!esUuid(criterioId)) error(400, 'Identificador de criterio inválido');
 
-  const [actual] = await db
-    .select()
-    .from(tareaCriterios)
-    .where(and(eq(tareaCriterios.id, criterioId), eq(tareaCriterios.tareaId, tarea.id)))
-    .limit(1);
+  await db.transaction(async (tx) => {
+    const [tarea] = await tx.select().from(tareas).where(eq(tareas.id, tareaId)).for('update');
+    if (!tarea) error(404, 'Tarea inexistente');
+    if (!puedeVer(actor, tarea)) error(403, 'No tienes acceso para modificar esta tarea');
+    if (actor.rol === 'ADMIN') error(403, 'El administrador solo tiene permisos de lectura');
 
-  if (!actual) error(404, 'El criterio no pertenece a esta tarea');
+    const criterio = and(eq(tareaCriterios.id, criterioId), eq(tareaCriterios.tareaId, tarea.id));
+    const [actual] = await tx.select().from(tareaCriterios).where(criterio);
+    if (!actual) error(404, 'El criterio no pertenece a esta tarea');
 
-  if (modo === 'ENCARGADO') {
-    if (!cumpleRol(actor, 'REVISOR', tarea)) {
-      error(403, 'Solo el encargado o revisor puede verificar criterios');
+    if (modo === 'ENCARGADO') {
+      if (!cumpleRol(actor, 'REVISOR', tarea)) error(403, 'Solo el encargado o revisor puede verificar criterios');
+      if (tarea.estado !== 'EN_REVISION') {
+        error(400, 'La verificación del encargado solo se realiza cuando la tarea está en revisión');
+      }
+      await tx.update(tareaCriterios).set({ verificadoEncargado: !actual.verificadoEncargado }).where(criterio);
+      return;
     }
-    if (tarea.estado !== 'EN_REVISION') {
-      error(400, 'La verificación del encargado solo se realiza cuando la tarea está en revisión');
-    }
-    await db
-      .update(tareaCriterios)
-      .set({ verificadoEncargado: !actual.verificadoEncargado })
-      .where(eq(tareaCriterios.id, criterioId));
-  } else {
-    const puedeAvanzar = cumpleRol(actor, 'RESPONSABLE', tarea) || cumpleRol(actor, 'REVISOR', tarea);
-    if (!puedeAvanzar) {
-      error(403, 'Solo el responsable asignado puede marcar el avance del checklist');
-    }
+
+    if (!cumpleRol(actor, 'RESPONSABLE', tarea)) error(403, 'Solo el responsable asignado puede marcar el avance del checklist');
     if (tarea.estado !== 'ASIGNADA' && tarea.estado !== 'EN_PROCESO') {
       error(400, 'El checklist de avance solo se modifica cuando la tarea está asignada o en proceso');
     }
-    if (actual.verificadoEncargado && !cumpleRol(actor, 'REVISOR', tarea)) {
+    if (actual.verificadoEncargado) {
       error(400, 'Este criterio ya fue verificado por el encargado y no requiere modificarse.');
     }
-    await db
-      .update(tareaCriterios)
-      .set({ completado: !actual.completado })
-      .where(eq(tareaCriterios.id, criterioId));
-  }
+    await tx.update(tareaCriterios).set({ completado: !actual.completado }).where(criterio);
+  });
 }
 
 /* ------------------------------------------------------------------ */
@@ -1471,30 +1486,35 @@ export async function obtenerComentariosBD(tareaId: string): Promise<ComentarioT
 // ELIMINACIÓN DE TAREA
 // =========================================================================
 export async function eliminarTarea(actor: Actor, tareaId: string) {
-  const tarea = await cargarTarea(tareaId);
-  if (!puedeVer(actor, tarea)) {
-    error(403, 'No tienes acceso a esta tarea');
-  }
+  if (!esUuid(tareaId)) error(404, 'Tarea inexistente');
+  await db.transaction(async (tx) => {
+    const [tarea] = await tx.select().from(tareas).where(eq(tareas.id, tareaId)).for('update');
+    if (!tarea) error(404, 'Tarea inexistente');
+    if (!puedeVer(actor, tarea)) error(403, 'No tienes acceso a esta tarea');
+    if (actor.rol !== 'ADMIN' && !esEncargadoDelDepartamento(actor, tarea) && actor.id !== tarea.creadoPorId) {
+      error(403, 'Solo el encargado del departamento o quien creó la tarea puede eliminarla');
+    }
 
-  const esJefeOAutor =
-    actor.rol === 'ADMIN' ||
-    (actor.rol === 'ENCARGADO' && actor.departamentoId === tarea.departamentoId) ||
-    actor.id === tarea.creadoPorId;
-
-  if (!esJefeOAutor) {
-    error(403, 'Solo el encargado del departamento o quien creó la tarea puede eliminarla');
-  }
+    const participantes = [tarea.creadoPorId, tarea.responsableId, tarea.revisorId]
+      .filter((id): id is string => id !== null && id !== actor.id);
+    if (participantes.length) {
+      const destinatarios = await tx.select({ id: usuarios.id }).from(usuarios)
+        .where(and(inArray(usuarios.id, participantes), eq(usuarios.activo, true)));
+      await insertarNotificacionesBD(tx, destinatarios.map(({ id }) => ({
+        usuarioId: id,
+        titulo: `Tarea eliminada: ${recortarTitulo(tarea.titulo)}`,
+        mensaje: `${actor.nombre} eliminó la tarea "${tarea.titulo}".`
+      })));
+    }
+    await tx.delete(tareas).where(eq(tareas.id, tareaId));
+  });
 
   try {
-    const uploadDir = path.resolve('uploads', tarea.id);
-    await fs.rm(uploadDir, { recursive: true, force: true });
-  } catch {
-
+    await fs.rm(path.resolve('uploads', tareaId), { recursive: true, force: true });
+  } catch (err) {
+    console.error('No se pudieron eliminar los archivos de la tarea', tareaId, err);
   }
-
-  await db.delete(tareas).where(eq(tareas.id, tarea.id));
-
-  return { id: tarea.id, eliminada: true };
+  return { id: tareaId, eliminada: true };
 }
 
 /** La condición del UPDATE garantiza una sola asignación incluso con peticiones simultáneas. */

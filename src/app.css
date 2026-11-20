@@ -26,11 +26,55 @@
   --shadow-glow-gold: 0 0 25px -4px rgba(255, 202, 69, 0.25);
 }
 
-body { background: #f8fafc; color: #0f172a; }
+:root { color-scheme: dark; }
+
+:root[data-tema='claro'] {
+  color-scheme: light;
+  --color-tezcat-bg: #f2f5fa;
+  --color-tezcat-card: #ffffff;
+  --color-tezcat-surface: #eaf0f7;
+  --color-tezcat-surfaceAlt: #e5edf6;
+  --color-tezcat-border: #ccd6e3;
+  --color-tezcat-borderHighlight: #8b9eb4;
+  --color-tezcat-cyan: #00667f;
+  --color-tezcat-cyanHover: #005568;
+  --color-tezcat-tealDeep: #3fb9c5;
+  --color-tezcat-gold: #805400;
+  --color-tezcat-goldMuted: #70500a;
+  --color-tezcat-textPrimary: #162235;
+  --color-tezcat-textSecondary: #41546b;
+  --color-tezcat-textMuted: #506177;
+  --color-tezcat-success: #15803d;
+  --color-tezcat-danger: #b91c1c;
+}
+
+body { background: var(--color-tezcat-bg); color: var(--color-tezcat-textPrimary); }
+
+/* Contraste de utilidades de texto sobre los fondos del tema claro. */
+@layer utilities {
+  [data-tema='claro'] .text-white:not([class*='bg-slate-950/']),
+  [data-tema='claro'] .hover\:text-white:hover {
+    color: var(--color-tezcat-textPrimary);
+  }
+  [data-tema='claro'] :is(.text-amber-100, .text-amber-200, .text-amber-300, [class*='text-amber-100/'], [class*='text-amber-300/']) {
+    color: #754704;
+  }
+  [data-tema='claro'] :is(.text-red-200, .text-red-300, .text-red-400) {
+    color: #a11f26;
+  }
+  [data-tema='claro'] .text-emerald-300 { color: #12633e; }
+  [data-tema='claro'] :is(.text-violet-300, .text-purple-300) { color: #613697; }
+
+  /* Los botones con texto oscuro conservan un fondo de acento luminoso. */
+  [data-tema='claro'] .text-slate-950:is(.bg-tezcat-cyan, .from-tezcat-cyan) {
+    --color-tezcat-cyan: #72d7ec;
+    --color-tezcat-cyanHover: #58cade;
+  }
+}
 
 /* En @layer base para que las clases de Tailwind (p. ej. bg-tezcat-bg) puedan sobrescribirlo */
 @layer base {
-  input, select { background: white; }
+  input, select { background: var(--color-tezcat-card); }
 }
 
 /* Íconos Material Symbols: se usan como <span class="material-symbols-outlined">nombre</span> */

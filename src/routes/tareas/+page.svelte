@@ -40,6 +40,7 @@
   function textoVencimiento(t: (typeof data.tareas)[number]): { texto: string; urgente: boolean } {
     if (t.reasignadaDelUsuario) return { texto: 'Reasignada a otro miembro', urgente: false };
     if (t.estado === 'TERMINADA') return { texto: 'Completada', urgente: false };
+    if (!t.fechaLimite) return { texto: 'Sin fecha límite', urgente: false };
     const dias = diasRestantes(t.fechaLimite);
     if (dias < 0) return { texto: `Vencida hace ${Math.abs(dias)} día${Math.abs(dias) === 1 ? '' : 's'}`, urgente: true };
     if (dias === 0) return { texto: 'Vence hoy', urgente: true };
@@ -170,7 +171,7 @@
     enRevision: data.tareas.filter((t) => !t.reasignadaDelUsuario && t.estado === 'EN_REVISION').length,
     terminadas: data.tareas.filter((t) => !t.reasignadaDelUsuario && t.estado === 'TERMINADA').length,
     vencidas: data.tareas.filter(
-      (t) => !t.reasignadaDelUsuario && t.estado !== 'TERMINADA' && diasRestantes(t.fechaLimite) < 0
+      (t) => !t.reasignadaDelUsuario && t.estado !== 'TERMINADA' && t.fechaLimite && diasRestantes(t.fechaLimite) < 0
     ).length
   });
 </script>
@@ -368,7 +369,7 @@
                 </span>
                 <span class="inline-flex items-center gap-1">
                   <span class="material-symbols-outlined text-sm">event</span>
-                  {fecha(t.fechaLimite)} · {vencimiento.texto}
+                  {#if t.fechaLimite}{fecha(t.fechaLimite)} · {/if}{vencimiento.texto}
                 </span>
               </p>
             </a>

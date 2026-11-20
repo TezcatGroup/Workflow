@@ -11,6 +11,17 @@ import {
 } from '$lib/server/db/schema';
 import type { Actor } from '$lib/server/tareas';
 
+export async function insertarNotificacionesBD(conexion: Pick<typeof db, 'insert'>, avisos: DatosNuevaNotificacion[]) {
+  if (avisos.length === 0) return;
+  await conexion.insert(notificaciones).values(avisos.map((datos) => ({
+    usuarioId: datos.usuarioId,
+    tareaId: datos.tareaId ?? null,
+    titulo: datos.titulo.slice(0, 200),
+    mensaje: datos.mensaje,
+    enlace: datos.enlace ?? (datos.tareaId ? `/tareas/${datos.tareaId}` : '/tareas')
+  })));
+}
+
 const MS_POR_HORA = 3_600_000;
 const VENTANA_POR_VENCER_MS = 48 * MS_POR_HORA; // 48 horas antes del vencimiento
 const COOLDOWN_SCHEDULER_MS = 2 * 60_000; // Ejecución máxima cada 2 minutos bajo demanda
@@ -51,14 +62,7 @@ function limpiarTextoCore(tituloNotificacion: string, tareaTitulo?: string | nul
  */
 export async function crearNotificacionBD(datos: DatosNuevaNotificacion): Promise<void> {
   try {
-    await db.insert(notificaciones).values({
-      usuarioId: datos.usuarioId,
-      tareaId: datos.tareaId ?? null,
-      titulo: datos.titulo.slice(0, 200),
-      mensaje: datos.mensaje,
-      enlace: datos.enlace ?? (datos.tareaId ? `/tareas/${datos.tareaId}` : '/tareas'),
-      leida: false
-    });
+    await insertarNotificacionesBD(db, [datos]);
   } catch (err) {
     console.error('[TW-23] Error al registrar notificación:', err);
   }
@@ -123,7 +127,7 @@ export async function verificarVencimientosTareasBD(forzar = false): Promise<num
     let generadas = 0;
 
     for (const t of tareasCriticas) {
-      if (!t.responsableId) continue;
+      if (!t.responsableId || !t.fechaLimite) continue;
 
       const diffMs = new Date(t.fechaLimite).getTime() - ahoraMs;
       const horasRestantes = Math.ceil(diffMs / MS_POR_HORA);

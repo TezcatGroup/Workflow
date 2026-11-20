@@ -76,7 +76,7 @@ export const tareas = pgTable('tareas', {
   numero: serial('numero'),
   impacto: varchar('impacto', { length: 80 }),
   estimadoMinutos: integer('estimado_minutos'),
-  fechaLimite: timestamp('fecha_limite', { withTimezone: true }).notNull(),
+  fechaLimite: timestamp('fecha_limite', { withTimezone: true }),
   xpOfrecido: integer('xp_ofrecido'),
   puntosOfrecidos: integer('puntos_ofrecidos'),
   creadoEn: timestamp('creado_en', { withTimezone: true }).notNull().defaultNow(),
@@ -167,6 +167,12 @@ export const tareaRamas = pgTable('tarea_ramas', {
   index('tarea_ramas_tarea_idx').on(t.tareaId),
   index('tarea_ramas_rama_idx').on(t.ramaId)
 ]);
+
+// El identificador histórico se conserva aunque se borre la tarea.
+export const contribucionesOpcionales = pgTable('contribuciones_opcionales', {
+  tareaId: uuid('tarea_id').primaryKey(),
+  usuarioId: uuid('usuario_id').notNull().references(() => usuarios.id, { onDelete: 'cascade' })
+}, (t) => [index('contribuciones_opcionales_usuario_idx').on(t.usuarioId)]);
 
 export const movimientosXp = pgTable('movimientos_xp', {
   id: uuid('id').defaultRandom().primaryKey(),

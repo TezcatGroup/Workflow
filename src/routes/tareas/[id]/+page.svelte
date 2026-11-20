@@ -174,7 +174,7 @@
   }
 
   const vencida = $derived(
-    data.tarea.estado !== 'TERMINADA' && new Date(data.tarea.fechaLimite).getTime() < Date.now()
+    data.tarea.estado !== 'TERMINADA' && !!data.tarea.fechaLimite && new Date(data.tarea.fechaLimite).getTime() < Date.now()
   );
 
   // =========================================================================
@@ -204,12 +204,16 @@
 
   const puedeMarcarAvance = $derived(
     !reasignadaDelUsuario &&
-      (esResponsableActual || esEncargadoORevisor) &&
+      esResponsableActual &&
+      data.user.rol !== 'ADMIN' &&
       (data.tarea.estado === 'ASIGNADA' || data.tarea.estado === 'EN_PROCESO')
   );
 
   const puedeVerificarRevision = $derived(
-    !reasignadaDelUsuario && esEncargadoORevisor && data.tarea.estado === 'EN_REVISION'
+    !reasignadaDelUsuario && data.user.rol !== 'ADMIN' &&
+      (data.user.id === data.revisor?.id ||
+        (data.user.rol === 'ENCARGADO' && !!data.user.departamentoId && data.user.departamentoId === data.tarea.departamentoId)) &&
+      data.tarea.estado === 'EN_REVISION'
   );
 
   function transicionBloqueada(destino: string): { bloqueado: boolean; motivo: string } {
@@ -265,6 +269,7 @@
   // =========================================================================
   let nuevoComentario = $state('');
   let enviandoComentario = $state(false);
+  let editorAbierto = $state(false);
   let contenedorChatRef = $state<HTMLDivElement | null>(null);
 
   $effect(() => {
@@ -276,7 +281,8 @@
 
   $effect(() => {
     const intervalo = setInterval(() => {
-      if (document.visibilityState === 'visible') {
+      // Una recarga de datos puede reemplazar el formulario mientras se edita.
+      if (document.visibilityState === 'visible' && !editorAbierto) {
         invalidateAll();
       }
     }, 12_000);
@@ -418,7 +424,9 @@
     <!-- TW-11: PANEL EXCLUSIVO DEL ENCARGADO PARA RESOLVER REASIGNACIÓN -->
     <!-- =============================================================== -->
     {#if data.user.rol === 'ENCARGADO' && data.user.departamentoId === data.tarea.departamentoId && ['ASIGNADA', 'EN_PROCESO'].includes(data.tarea.estado)}
-      {#key data.tarea.actualizadoEn}<EditarTarea tarea={data.tarea} />{/key}
+      {#key `${data.tarea.id}:${new Date(data.tarea.actualizadoEn).toISOString()}`}
+        <EditarTarea tarea={data.tarea} asignadas={data.etiquetas} disponibles={data.etiquetasDisponibles} bind:abierto={editorAbierto} />
+      {/key}
     {/if}
     {#if esEncargadoORevisor && data.solicitudPendiente}
       <section class="rounded-2xl border border-amber-400/50 bg-tezcat-card/95 p-5 shadow-2xl backdrop-blur-md">
@@ -654,12 +662,12 @@
                     <input type="hidden" name="modo" value="RESPONSABLE" />
                     <button
                       type="submit"
-                      disabled={!puedeMarcarAvance || (c.verificadoEncargado && !esEncargadoORevisor)}
-                      title={c.verificadoEncargado && !esEncargadoORevisor
+                      disabled={!puedeMarcarAvance || c.verificadoEncargado}
+                      title={c.verificadoEncargado
                         ? 'Este criterio ya fue verificado y aprobado por el encargado'
                         : puedeMarcarAvance
                           ? 'Haz clic para marcar o desmarcar este criterio'
-                          : 'El avance solo se modifica en estado Asignada o En proceso'}
+                          : 'Solo el responsable puede marcar el avance en estado Asignada o En proceso'}
                       class="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-md border transition-colors disabled:cursor-default
                         {c.completado
                           ? 'border-emerald-400 bg-emerald-400/20 text-emerald-300'
@@ -1092,16 +1100,18 @@
                   Motivo enviado: "{data.solicitudPendiente.motivo}"
                 </p>
               </div>
-            {:else if data.plazoReasignacion?.dentroDePlazo}
+            {:else if !data.plazoReasignacion || data.plazoReasignacion.dentroDePlazo}
               <div class="space-y-3 text-xs">
-                <div class="rounded-xl border border-tezcat-border bg-tezcat-bg p-3">
-                  <p class="font-mono text-[10px] text-tezcat-cyan uppercase">
-                    Plazo disponible
-                  </p>
-                  <p class="mt-1 text-tezcat-textSecondary">
-                    Tienes hasta el <strong>{fecha(data.plazoReasignacion.fechaLimiteSolicitud)}</strong> para solicitar reasignación.
-                  </p>
-                </div>
+                {#if data.plazoReasignacion}
+                  <div class="rounded-xl border border-tezcat-border bg-tezcat-bg p-3">
+                    <p class="font-mono text-[10px] text-tezcat-cyan uppercase">
+                      Plazo disponible
+                    </p>
+                    <p class="mt-1 text-tezcat-textSecondary">
+                      Tienes hasta el <strong>{fecha(data.plazoReasignacion.fechaLimiteSolicitud)}</strong> para solicitar reasignación.
+                    </p>
+                  </div>
+                {/if}
 
                 {#if !mostrarFormularioSolicitud}
                   <button
@@ -1161,7 +1171,9 @@
               </div>
             {:else}
               <div class="rounded-xl border border-tezcat-border bg-tezcat-bg/60 p-3 text-xs text-tezcat-textMuted">
-                El plazo del 20% ({data.plazoReasignacion?.diasPermitidos ?? 1} día{(data.plazoReasignacion?.diasPermitidos ?? 1) === 1 ? '' : 's'}) para solicitar cambio de asignación en esta tarea ha finalizado.
+                {data.plazoReasignacion?.tareaVencida
+                  ? 'La tarea venció. Ya no puedes solicitar su reasignación.'
+                  : 'El plazo para solicitar el cambio de asignación ha finalizado.'}
               </div>
             {/if}
           </Panel>
@@ -1219,7 +1231,12 @@
                       <form method="POST" action="?/eliminarArchivo" use:enhance>
                         <input type="hidden" name="archivoId" value={a.id} />
                         <button
-                          type="submit"
+                          type="button"
+                          onclick={(event) => {
+                            if (confirm(`¿Estás seguro de que quieres eliminar el adjunto "${a.nombre}"?`)) {
+                              event.currentTarget.form?.requestSubmit();
+                            }
+                          }}
                           title="Eliminar archivo"
                           class="rounded p-1 text-tezcat-textMuted transition-colors hover:bg-tezcat-danger/15 hover:text-red-300"
                         >

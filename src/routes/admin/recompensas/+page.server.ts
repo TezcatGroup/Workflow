@@ -1,5 +1,5 @@
-import { fail, type Actions } from '@sveltejs/kit';
-import { asc, desc, eq, inArray } from 'drizzle-orm';
+import { fail, isHttpError, type Actions } from '@sveltejs/kit';
+import { and, asc, desc, eq, inArray, ne } from 'drizzle-orm';
 import type { PageServerLoad } from './$types';
 import { db } from '$lib/server/db';
 import {
@@ -10,6 +10,8 @@ import {
   usuarios
 } from '$lib/server/db/schema';
 import { campo, exigirAdmin } from '$lib/server/admin';
+import { pagarCanje } from '$lib/server/canjes';
+import { insertarNotificacionesBD } from '$lib/server/notificaciones';
 
 const ACCIONES_AUDITORIA_RECOMPENSAS = [
   'RECOMPENSA_CREADA',
@@ -97,6 +99,15 @@ export const actions: Actions = {
             activo: true
           })
           .returning({ id: recompensas.id });
+
+        const destinatarios = await tx.select({ id: usuarios.id }).from(usuarios)
+          .where(and(eq(usuarios.activo, true), ne(usuarios.rol, 'ADMIN')));
+        await insertarNotificacionesBD(tx, destinatarios.map(({ id }) => ({
+          usuarioId: id,
+          titulo: `Producto nuevo en la tienda: ${nombre}`,
+          mensaje: `"${nombre}" ya está en el catálogo por ${costoPuntos} monedas.`,
+          enlace: '/tienda'
+        })));
 
         // TW-21: Registrar auditoría administrativa de creación en el catálogo
         await tx.insert(auditoriaUsuarios).values({
@@ -216,77 +227,58 @@ export const actions: Actions = {
     if (!uuid.test(canjeId)) return fail(400, { error: 'ID de canje inválido.' });
 
     try {
+      if (accion === 'ENTREGAR') {
+        await pagarCanje(admin, canjeId);
+        return { ok: 'Canje marcado como pagado y registrado en auditoría.' };
+      }
+      if (accion !== 'CANCELAR') return fail(400, { error: 'Acción inválida.' });
       await db.transaction(async (tx) => {
         // Una sola resolución puede observar PENDIENTE; las demás esperan y vuelven a comprobarlo.
         const [canje] = await tx.select().from(canjes).where(eq(canjes.id, canjeId)).limit(1).for('update');
         if (!canje) throw new Error('Canje no encontrado en la base de datos.');
         if (canje.estado !== 'PENDIENTE') throw new Error('Este canje ya fue resuelto previamente.');
 
-        if (accion === 'ENTREGAR') {
-          await tx
-            .update(canjes)
-            .set({ estado: 'ENTREGADO', entregadoEn: new Date() })
-            .where(eq(canjes.id, canjeId));
+        await tx
+          .update(canjes)
+          .set({ estado: 'CANCELADO' })
+          .where(eq(canjes.id, canjeId));
 
-          await tx.insert(auditoriaUsuarios).values({
-            actorId: admin.id,
-            usuarioObjetivoId: canje.usuarioId,
-            accion: 'CANJE_ENTREGADO',
-            detalle: {
-              canjeId: canje.id,
-              recompensaId: canje.recompensaId,
-              puntosGastados: canje.puntosGastados
-            }
-          });
-        } else if (accion === 'CANCELAR') {
-          await tx
-            .update(canjes)
-            .set({ estado: 'CANCELADO' })
-            .where(eq(canjes.id, canjeId));
+        // Reembolsar los puntos gastados al usuario
+        await tx.insert(movimientosPuntos).values({
+          usuarioId: canje.usuarioId,
+          cantidad: canje.puntosGastados,
+          motivo: 'Reembolso por canje cancelado'
+        });
 
-          // Reembolsar los puntos gastados al usuario
-          await tx.insert(movimientosPuntos).values({
-            usuarioId: canje.usuarioId,
-            cantidad: canje.puntosGastados,
-            motivo: 'Reembolso por canje cancelado'
-          });
-
-          // Devolver el stock a la tienda si la recompensa maneja inventario finito
-          if (canje.recompensaId) {
-            const [rec] = await tx
-              .select({ stock: recompensas.stock })
-              .from(recompensas)
-              .where(eq(recompensas.id, canje.recompensaId)).for('update');
-            if (rec && rec.stock !== null) {
-              await tx
-                .update(recompensas)
-                .set({ stock: rec.stock + 1, actualizadaEn: new Date() })
-                .where(eq(recompensas.id, canje.recompensaId));
-            }
+        // Devolver el stock a la tienda si la recompensa maneja inventario finito
+        if (canje.recompensaId) {
+          const [rec] = await tx
+            .select({ stock: recompensas.stock })
+            .from(recompensas)
+            .where(eq(recompensas.id, canje.recompensaId)).for('update');
+          if (rec && rec.stock !== null) {
+            await tx
+              .update(recompensas)
+              .set({ stock: rec.stock + 1, actualizadaEn: new Date() })
+              .where(eq(recompensas.id, canje.recompensaId));
           }
-
-          await tx.insert(auditoriaUsuarios).values({
-            actorId: admin.id,
-            usuarioObjetivoId: canje.usuarioId,
-            accion: 'CANJE_CANCELADO',
-            detalle: {
-              canjeId: canje.id,
-              recompensaId: canje.recompensaId,
-              puntosReembolsados: canje.puntosGastados
-            }
-          });
-        } else {
-          throw new Error('Acción inválida.');
         }
+
+        await tx.insert(auditoriaUsuarios).values({
+          actorId: admin.id,
+          usuarioObjetivoId: canje.usuarioId,
+          accion: 'CANJE_CANCELADO',
+          detalle: {
+            canjeId: canje.id,
+            recompensaId: canje.recompensaId,
+            puntosReembolsados: canje.puntosGastados
+          }
+        });
       });
 
-      return {
-        ok:
-          accion === 'ENTREGAR'
-            ? 'El canje ha sido marcado como entregado y registrado en auditoría.'
-            : 'Canje cancelado. Se han reembolsado los puntos y el stock.'
-      };
+      return { ok: 'Canje cancelado. Se han reembolsado los puntos y el stock.' };
     } catch (e: unknown) {
+      if (isHttpError(e)) return fail(e.status, { error: e.body.message });
       const mensaje =
         e instanceof Error ? e.message : 'Error al procesar la resolución del canje.';
       return fail(400, { error: mensaje });

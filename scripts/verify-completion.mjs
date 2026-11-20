@@ -41,7 +41,7 @@ try {
   });
   let taskId;
   await test('Tareas: edición autorizada, validaciones, historial y conflicto de versión',async()=>{
-    const r = await post('/tareas/nueva','crear',users.manager.cookie,{titulo:`Tarea ${suffix}`,responsableId:users.member.id,fechaLimite:new Date(Date.now()+864000000).toISOString(),proyectoId});
+    const r = await post('/tareas/nueva','crear',users.manager.cookie,{titulo:`Tarea ${suffix}`,responsableId:users.member.id,fechaLimite:new Date(Date.now()+864000000).toISOString(),proyectoId,criterios:'Entregar documentación'});
     assert.equal(r.status,303); taskId=r.headers.get('location').split('/').at(-1);
     const [t] = await sql`select * from tareas where id=${taskId}`;
     const values={titulo:'Título corregido',descripcion:'Descripción corregida',prioridad:'ALTA',fechaLimite:t.fecha_limite.toISOString(),version:t.actualizado_en.toISOString(),motivo:'Corrección de alcance'};
@@ -79,7 +79,7 @@ try {
     await status(await req('/perfil?/guardarFoto',users.member.cookie,{method:'POST',body:f}),200);
     await status(await req(`/equipo/${users.member.id}/foto`,users.manager.cookie),200);
     await status(await req(`/equipo/${users.member.id}/foto`,users.other.cookie),404);
-    await status(await req(`/equipo/${users.member.id}/foto`,users.member.cookie),403);
+    await status(await req(`/equipo/${users.member.id}/foto`,users.member.cookie),200);
     assert.ok((await (await req('/equipo',users.manager.cookie)).text()).includes(`/equipo/${users.member.id}/foto`));
   });
   await test('Restablecimiento: permisos, confirmación, contraseña anterior revocada y sesiones cerradas',async()=>{

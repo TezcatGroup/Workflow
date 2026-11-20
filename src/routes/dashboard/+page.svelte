@@ -107,8 +107,6 @@
   const hechas = new SvelteSet<string>();
   const aceptadas = new SvelteSet<string>();
   let aviso = $state(false);
-  let resaltar = $state(false);
-  let listaMisiones: HTMLUListElement | undefined = $state();
 
   const alternar = (id: string) => (hechas.has(id) ? hechas.delete(id) : hechas.add(id));
 
@@ -119,11 +117,6 @@
     setTimeout(() => (aviso = false), 3000);
   }
 
-  function reclamar() {
-    listaMisiones?.querySelector('button')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    resaltar = true;
-    setTimeout(() => (resaltar = false), 1500);
-  }
 </script>
 
 <svelte:head>
@@ -184,14 +177,6 @@
             </div>
           </div>
 
-          <button
-            type="button"
-            onclick={reclamar}
-            class="group flex w-full items-center justify-center gap-1.5 rounded-lg border border-tezcat-border bg-tezcat-surfaceAlt px-5 py-2.5 text-sm font-semibold transition-colors hover:border-tezcat-cyan/40 hover:text-tezcat-cyan"
-          >
-            <span class="material-symbols-outlined text-tezcat-cyan transition-transform group-hover:rotate-12">bolt</span>
-            Reclamar tareas opcionales (+XP)
-          </button>
         </div>
       </div>
     </section>
@@ -313,8 +298,8 @@
             </span>
           {/snippet}
 
-          <ul bind:this={listaMisiones} class="space-y-3">
-            {#each misiones as m, i (m.id)}
+          <ul class="space-y-3">
+            {#each misiones as m (m.id)}
               {@const ok = aceptadas.has(m.id)}
               <li class="space-y-3 rounded-lg bg-tezcat-bg p-4 transition-colors hover:bg-tezcat-surface">
                 <div class="flex items-start justify-between gap-2">
@@ -337,9 +322,7 @@
                     onclick={() => aceptar(m.id)}
                     class="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 font-bold tracking-wider uppercase transition-colors {ok
                       ? 'border-tezcat-cyan/40 bg-tezcat-cyan/10 text-tezcat-cyan'
-                      : 'border-tezcat-border bg-tezcat-surfaceAlt hover:border-tezcat-cyan/40 hover:text-tezcat-cyan'} {resaltar && i === 0
-                      ? 'ring-2 ring-tezcat-cyan'
-                      : ''}"
+                      : 'border-tezcat-border bg-tezcat-surfaceAlt hover:border-tezcat-cyan/40 hover:text-tezcat-cyan'}"
                   >
                     {ok ? 'Misión aceptada' : 'Aceptar misión'}
                     <span class="material-symbols-outlined text-xs">{ok ? 'done' : 'arrow_forward'}</span>

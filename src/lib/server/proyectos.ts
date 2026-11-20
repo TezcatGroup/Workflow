@@ -1,7 +1,7 @@
 import { error } from '@sveltejs/kit';
 import { and, asc, eq } from 'drizzle-orm';
 import { db } from '$lib/server/db';
-import { departamentos, proyectos, auditoriaUsuarios } from '$lib/server/db/schema';
+import { departamentos, proyectos, auditoriaUsuarios, tareas } from '$lib/server/db/schema';
 import { campo } from '$lib/server/admin';
 
 export function gestorProyectos(user: App.Locals['user']) {
@@ -12,10 +12,28 @@ export function gestorProyectos(user: App.Locals['user']) {
 
 export async function listarProyectos(user: App.Locals['user']) {
   const actor = gestorProyectos(user);
+  const esAdmin = actor.rol === 'ADMIN';
+  const filtroProyectos = esAdmin ? undefined : eq(proyectos.departamentoId, actor.departamentoId!);
+  const [lista, departamentosVisibles, tareasVinculadas] = await Promise.all([
+    db.select().from(proyectos).where(filtroProyectos).orderBy(asc(proyectos.nombre)),
+    db.select().from(departamentos).where(esAdmin ? undefined : eq(departamentos.id, actor.departamentoId!)).orderBy(asc(departamentos.nombre)),
+    db.select({ id: tareas.id, titulo: tareas.titulo, estado: tareas.estado, proyectoId: proyectos.id })
+      .from(tareas).innerJoin(proyectos, eq(proyectos.id, tareas.proyectoId))
+      .where(esAdmin ? undefined : and(filtroProyectos, eq(tareas.departamentoId, actor.departamentoId!)))
+      .orderBy(asc(tareas.titulo))
+  ]);
+
+  const porProyecto = new Map<string, Omit<(typeof tareasVinculadas)[number], 'proyectoId'>[]>();
+  for (const { proyectoId, ...tarea } of tareasVinculadas) {
+    const relacionadas = porProyecto.get(proyectoId);
+    if (relacionadas) relacionadas.push(tarea);
+    else porProyecto.set(proyectoId, [tarea]);
+  }
+
   return {
     user: actor,
-    proyectos: await db.select().from(proyectos).where(actor.rol === 'ADMIN' ? undefined : eq(proyectos.departamentoId, actor.departamentoId!)).orderBy(asc(proyectos.nombre)),
-    departamentos: await db.select().from(departamentos).where(actor.rol === 'ADMIN' ? undefined : eq(departamentos.id, actor.departamentoId!)).orderBy(asc(departamentos.nombre))
+    proyectos: lista.map((p) => ({ ...p, tareas: porProyecto.get(p.id) ?? [] })),
+    departamentos: departamentosVisibles
   };
 }
 

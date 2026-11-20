@@ -381,7 +381,7 @@
         <!-- Fecha límite / Proyecto -->
         <div class="grid gap-5 sm:grid-cols-2">
           <div>
-            <label class={etiqueta} for="fechaLimite">Fecha límite *</label>
+            <label class={etiqueta} for="fechaLimite">Fecha límite (opcional)</label>
             <div class="relative rounded-xl shadow-sm">
               <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 text-tezcat-textMuted">
                 <span class="material-symbols-outlined text-lg">event</span>
@@ -391,9 +391,8 @@
                 id="fechaLimite"
                 name="fechaLimite"
                 min={hoy}
-                required
                 value={v?.fechaLimite ?? ''}
-                class="{campo} [color-scheme:dark]"
+                class={campo}
               />
             </div>
           </div>
@@ -463,6 +462,7 @@
                   </div>
                   <input
                     name="criterios"
+                    required={criterios.length === 1}
                     maxlength="255"
                     bind:value={criterios[i]}
                     placeholder="Ej. Entregar reporte firmado por el encargado"

@@ -1,10 +1,15 @@
 <script lang="ts">
   import { enhance } from '$app/forms';
+  import type { SubmitFunction } from '@sveltejs/kit';
   import type { ActionData, PageData } from './$types';
   import EncabezadoApp from '$lib/components/EncabezadoApp.svelte';
   import Panel from '$lib/components/Panel.svelte';
 
   let { data, form }: { data: PageData; form: ActionData } = $props();
+
+  const conservarEdicion: SubmitFunction = () => async ({ update }) => {
+    await update({ reset: false });
+  };
 
   const roles = ['MIEMBRO', 'ENCARGADO', 'ADMIN'];
   const colorRol: Record<string, string> = {
@@ -129,16 +134,16 @@
             <span class="rounded bg-tezcat-surfaceAlt px-2 py-0.5 {colorRol[u.rol] ?? ''}">{u.rol}</span>
           </div>
 
-          <form method="POST" action="?/actualizar" use:enhance class="grid gap-3 md:grid-cols-4">
+          <form method="POST" action="?/actualizar" use:enhance={conservarEdicion} class="grid gap-3 md:grid-cols-4">
             <input type="hidden" name="id" value={u.id} />
             <label><span class={etiqueta}>Nombre completo</span>
               <input class={campo} name="nombre" value={u.nombre} required /></label>
             <label><span class={etiqueta}>Rol</span>
-              <select class={campo} name="rol" value={u.rol}>{#each roles as r}<option>{r}</option>{/each}</select></label>
+              <select class={campo} name="rol" value={u.rol}>{#each roles as r}<option value={r} selected={r === u.rol}>{r}</option>{/each}</select></label>
             <label><span class={etiqueta}>Departamento</span>
               <select class={campo} name="departamentoId" value={u.departamentoId ?? ''}>
-                <option value="">Sin departamento</option>
-                {#each data.departamentos as d (d.id)}<option value={d.id}>{d.nombre}</option>{/each}
+                <option value="" selected={!u.departamentoId}>Sin departamento</option>
+                {#each data.departamentos as d (d.id)}<option value={d.id} selected={d.id === u.departamentoId}>{d.nombre}</option>{/each}
               </select></label>
             <button class="{boton} self-end" type="submit">Guardar cambios</button>
           </form>

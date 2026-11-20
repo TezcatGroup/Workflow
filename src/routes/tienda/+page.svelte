@@ -143,6 +143,34 @@
       </div>
     {/if}
 
+    {#if data.user.rol === 'ENCARGADO' && data.user.departamentoId}
+      <section id="canjes-area" aria-labelledby="titulo-canjes-area" class="mb-8 scroll-mt-28 rounded-2xl border border-tezcat-border bg-tezcat-card p-5">
+        <h2 id="titulo-canjes-area" class="text-lg font-bold">Canjes pendientes del área</h2>
+        {#if data.canjesArea.length}
+          <ul class="mt-3 divide-y divide-tezcat-border">
+            {#each data.canjesArea as canje (canje.id)}
+              <li class="flex flex-wrap items-center justify-between gap-3 py-3">
+                <div>
+                  <p class="font-semibold">{canje.recompensaNombre ?? 'Recompensa retirada'}</p>
+                  <p class="text-sm text-tezcat-textSecondary">
+                    {canje.usuarioNombre} · {canje.puntosGastados} monedas · {fechaCorta(canje.creadoEn)}
+                  </p>
+                </div>
+                <form method="POST" action="?/pagarCanje" use:enhance>
+                  <input type="hidden" name="canjeId" value={canje.id} />
+                  <button type="submit" class="rounded-lg border border-tezcat-cyan/50 bg-tezcat-cyan/10 px-3 py-2 text-sm font-semibold text-tezcat-cyan hover:bg-tezcat-cyan/20">
+                    Marcar como pagado
+                  </button>
+                </form>
+              </li>
+            {/each}
+          </ul>
+        {:else}
+          <p class="mt-2 text-sm text-tezcat-textSecondary">Tu área no tiene canjes pendientes.</p>
+        {/if}
+      </section>
+    {/if}
+
     <!-- Encabezado Principal: Billetera y Telemetría (TW-17 · TW-22) -->
     <section class="relative mb-8 overflow-hidden rounded-2xl border border-tezcat-border/80 bg-tezcat-card/90 p-6 shadow-2xl backdrop-blur-md sm:p-8">
       <div class="pointer-events-none absolute -top-20 -right-20 size-80 rounded-full bg-amber-400/5 blur-3xl"></div>
@@ -328,7 +356,7 @@
                 {/if}
 
                 <!-- Etiqueta superior izquierda: Categoría -->
-                <div class="absolute top-2.5 left-2.5 rounded-md border border-tezcat-border/80 bg-slate-950/85 px-2.5 py-1 font-mono text-[10px] font-semibold tracking-wider text-tezcat-cyan uppercase backdrop-blur-md">
+                <div class="absolute top-2.5 left-2.5 rounded-md border border-tezcat-border/80 bg-tezcat-bg/90 px-2.5 py-1 font-mono text-[10px] font-semibold tracking-wider text-tezcat-cyan uppercase backdrop-blur-md">
                   {etiquetaCategoria[cat]}
                 </div>
 
@@ -336,8 +364,8 @@
                 <div
                   class="absolute top-2.5 right-2.5 rounded-md border px-2 py-0.5 font-mono text-[10px] font-bold uppercase backdrop-blur-md
                     {agotado
-                      ? 'border-red-400/50 bg-red-950/90 text-red-300'
-                      : 'border-tezcat-border/80 bg-slate-950/85 text-tezcat-textSecondary'}"
+                      ? 'border-red-400/50 bg-tezcat-card text-red-300'
+                      : 'border-tezcat-border/80 bg-tezcat-bg/90 text-tezcat-textSecondary'}"
                 >
                   {#if rec.stock === null}
                     Stock: Ilimitado
@@ -349,7 +377,7 @@
                 </div>
 
                 <!-- Etiqueta inferior derecha: Precio en Monedas / PTS -->
-                <div class="absolute right-2.5 bottom-2.5 flex items-center gap-1 rounded-full border border-amber-400/40 bg-slate-950/90 px-3 py-1 shadow-lg backdrop-blur-md">
+                <div class="absolute right-2.5 bottom-2.5 flex items-center gap-1 rounded-full border border-amber-400/40 bg-tezcat-bg/90 px-3 py-1 shadow-lg backdrop-blur-md">
                   <span class="material-symbols-outlined text-sm text-amber-300">monetization_on</span>
                   <span class="font-mono text-xs font-bold text-amber-300">
                     {formatearPuntos(rec.costoPuntos)} PTS
@@ -524,7 +552,7 @@
                         <p class="mt-0.5 font-mono text-[10px] text-tezcat-textSecondary">
                           Folio #{c.id.slice(0, 8).toUpperCase()} · Solicitado el {fechaCorta(c.creadoEn)}
                           {#if c.entregadoEn}
-                            · Entregado el {fechaCorta(c.entregadoEn)}
+                            · Pagado el {fechaCorta(c.entregadoEn)}
                           {/if}
                         </p>
                       </div>
@@ -541,7 +569,7 @@
                         </span>
                       {:else if c.estado === 'ENTREGADO'}
                         <span class="rounded border border-emerald-400/30 bg-emerald-400/15 px-2 py-0.5 font-mono text-[10px] font-bold text-emerald-300 uppercase">
-                          Entregado
+                          Pagado
                         </span>
                       {:else}
                         <span class="rounded border border-red-400/30 bg-red-400/15 px-2 py-0.5 font-mono text-[10px] font-bold text-red-300 uppercase">

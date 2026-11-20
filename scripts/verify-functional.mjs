@@ -28,7 +28,7 @@ async function login(email, pass) {
 }
 async function task(label, member = actors.member) {
   const r = await post('/tareas/nueva', 'crear', actors.manager, { titulo: `${label} ${suffix}`, responsableId: member.id,
-    fechaLimite: new Date(Date.now() + 10 * 86400000).toISOString().slice(0, 10) });
+    fechaLimite: new Date(Date.now() + 10 * 86400000).toISOString().slice(0, 10), criterios: 'Entregar resultado' });
   assert.equal(r.status, 303);
   return r.headers.get('location');
 }
@@ -58,7 +58,7 @@ try {
     for (const path of ['/dashboard','/tareas','/muro','/perfil','/equipo','/tienda','/notificaciones','/tareas/nueva']) {
       for (const key of ['admin','manager','member']) {
         let status = 200;
-        if (path === '/equipo' && key !== 'manager') status = 403;
+        if (path === '/equipo' && key === 'admin') status = 403;
         if (path === '/tareas/nueva' && key !== 'manager') status = 403;
         if (['/tienda','/notificaciones','/dashboard'].includes(path) && key === 'admin') status = 303;
         const r = await req(path, actors[key]); routeMatrix.push({ path, role:key, status:r.status }); await expect(r, status);
