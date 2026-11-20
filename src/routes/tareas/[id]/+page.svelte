@@ -265,6 +265,7 @@
   // =========================================================================
   let nuevoComentario = $state('');
   let enviandoComentario = $state(false);
+  let editorAbierto = $state(false);
   let contenedorChatRef = $state<HTMLDivElement | null>(null);
 
   $effect(() => {
@@ -276,7 +277,8 @@
 
   $effect(() => {
     const intervalo = setInterval(() => {
-      if (document.visibilityState === 'visible') {
+      // Una recarga de datos puede reemplazar el formulario mientras se edita.
+      if (document.visibilityState === 'visible' && !editorAbierto) {
         invalidateAll();
       }
     }, 12_000);
@@ -418,7 +420,9 @@
     <!-- TW-11: PANEL EXCLUSIVO DEL ENCARGADO PARA RESOLVER REASIGNACIÓN -->
     <!-- =============================================================== -->
     {#if data.user.rol === 'ENCARGADO' && data.user.departamentoId === data.tarea.departamentoId && ['ASIGNADA', 'EN_PROCESO'].includes(data.tarea.estado)}
-      {#key data.tarea.actualizadoEn}<EditarTarea tarea={data.tarea} asignadas={data.etiquetas} disponibles={data.etiquetasDisponibles} />{/key}
+      {#key `${data.tarea.id}:${new Date(data.tarea.actualizadoEn).toISOString()}`}
+        <EditarTarea tarea={data.tarea} asignadas={data.etiquetas} disponibles={data.etiquetasDisponibles} bind:abierto={editorAbierto} />
+      {/key}
     {/if}
     {#if esEncargadoORevisor && data.solicitudPendiente}
       <section class="rounded-2xl border border-amber-400/50 bg-tezcat-card/95 p-5 shadow-2xl backdrop-blur-md">

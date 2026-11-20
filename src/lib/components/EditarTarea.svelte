@@ -2,7 +2,7 @@
   import { enhance } from '$app/forms';
   import { onMount } from 'svelte';
   type Etiqueta = { id: string; nombre: string; activo: boolean };
-  let { tarea, asignadas, disponibles }: { asignadas: Etiqueta[]; disponibles: Etiqueta[]; tarea: { titulo: string; descripcion: string | null; prioridad: string | null; fechaLimite: Date | string; actualizadoEn: Date | string } } = $props();
+  let { tarea, asignadas, disponibles, abierto = $bindable(false) }: { abierto?: boolean; asignadas: Etiqueta[]; disponibles: Etiqueta[]; tarea: { titulo: string; descripcion: string | null; prioridad: string | null; fechaLimite: Date | string; actualizadoEn: Date | string } } = $props();
   const opciones = $derived([...asignadas, ...disponibles.filter((et) => !asignadas.some((a) => a.id === et.id))]);
   let fecha = $state(''), fechaInicial = $state('');
   onMount(() => { const d = new Date(tarea.fechaLimite); fecha = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0,16); fechaInicial = fecha; });
@@ -13,7 +13,7 @@
   }
   const campo = 'mt-1 w-full rounded-lg border border-tezcat-border bg-tezcat-bg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-tezcat-cyan';
 </script>
-<details class="rounded-xl border border-tezcat-border bg-tezcat-card p-5">
+<details bind:open={abierto} class="rounded-xl border border-tezcat-border bg-tezcat-card p-5">
   <summary class="cursor-pointer font-semibold text-tezcat-cyan">Editar datos de la tarea</summary>
   <p class="mt-3 text-sm text-tezcat-textSecondary">Puedes corregir los datos mientras la tarea esté asignada o en proceso. Indica el motivo para que el equipo pueda consultarlo en el historial.</p>
   <form method="POST" action="?/editar" use:enhance class="mt-4 grid gap-4 sm:grid-cols-2">
