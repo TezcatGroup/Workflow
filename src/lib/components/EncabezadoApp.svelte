@@ -57,6 +57,23 @@
   // =========================================================================
   // TW-23: Estado reactivo del Centro de Notificaciones (Solo Encargado/Miembro)
   // =========================================================================
+  let modoClaro = $state(false);
+
+  $effect(() => {
+    modoClaro = document.documentElement.dataset.tema === 'claro';
+  });
+
+  function alternarTema() {
+    modoClaro = !modoClaro;
+    if (modoClaro) document.documentElement.dataset.tema = 'claro';
+    else delete document.documentElement.dataset.tema;
+    try {
+      localStorage.setItem('workflow-tema', modoClaro ? 'claro' : 'oscuro');
+    } catch {
+      // El cambio visual funciona aunque el navegador bloquee el almacenamiento.
+    }
+  }
+
   let menuAbierto = $state(false);
   let cargandoNotificaciones = $state(false);
   let noLeidas = $state(0);
@@ -194,6 +211,16 @@
     </nav>
 
     <div class="ml-auto flex items-center gap-2.5">
+      <button
+        type="button"
+        onclick={alternarTema}
+        aria-label="Modo claro"
+        aria-pressed={modoClaro}
+        title={modoClaro ? 'Cambiar a modo oscuro' : 'Cambiar a modo claro'}
+        class="inline-flex size-9 items-center justify-center rounded-lg border border-tezcat-border bg-tezcat-surfaceAlt text-tezcat-textPrimary hover:border-tezcat-cyan focus-visible:outline-2 focus-visible:outline-tezcat-cyan"
+      >
+        <span aria-hidden="true" class="material-symbols-outlined text-lg">{modoClaro ? 'dark_mode' : 'light_mode'}</span>
+      </button>
       <!-- TW-23: Campanita exclusiva para ENCARGADO y MIEMBRO (Oculta para ADMIN) -->
       {#if user.rol !== 'ADMIN'}
         <div class="relative">

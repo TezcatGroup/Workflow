@@ -392,7 +392,7 @@
                 name="fechaLimite"
                 min={hoy}
                 value={v?.fechaLimite ?? ''}
-                class="{campo} [color-scheme:dark]"
+                class={campo}
               />
             </div>
           </div>

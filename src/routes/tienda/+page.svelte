@@ -328,7 +328,7 @@
                 {/if}
 
                 <!-- Etiqueta superior izquierda: Categoría -->
-                <div class="absolute top-2.5 left-2.5 rounded-md border border-tezcat-border/80 bg-slate-950/85 px-2.5 py-1 font-mono text-[10px] font-semibold tracking-wider text-tezcat-cyan uppercase backdrop-blur-md">
+                <div class="absolute top-2.5 left-2.5 rounded-md border border-tezcat-border/80 bg-tezcat-bg/90 px-2.5 py-1 font-mono text-[10px] font-semibold tracking-wider text-tezcat-cyan uppercase backdrop-blur-md">
                   {etiquetaCategoria[cat]}
                 </div>
 
@@ -336,8 +336,8 @@
                 <div
                   class="absolute top-2.5 right-2.5 rounded-md border px-2 py-0.5 font-mono text-[10px] font-bold uppercase backdrop-blur-md
                     {agotado
-                      ? 'border-red-400/50 bg-red-950/90 text-red-300'
-                      : 'border-tezcat-border/80 bg-slate-950/85 text-tezcat-textSecondary'}"
+                      ? 'border-red-400/50 bg-tezcat-card text-red-300'
+                      : 'border-tezcat-border/80 bg-tezcat-bg/90 text-tezcat-textSecondary'}"
                 >
                   {#if rec.stock === null}
                     Stock: Ilimitado
@@ -349,7 +349,7 @@
                 </div>
 
                 <!-- Etiqueta inferior derecha: Precio en Monedas / PTS -->
-                <div class="absolute right-2.5 bottom-2.5 flex items-center gap-1 rounded-full border border-amber-400/40 bg-slate-950/90 px-3 py-1 shadow-lg backdrop-blur-md">
+                <div class="absolute right-2.5 bottom-2.5 flex items-center gap-1 rounded-full border border-amber-400/40 bg-tezcat-bg/90 px-3 py-1 shadow-lg backdrop-blur-md">
                   <span class="material-symbols-outlined text-sm text-amber-300">monetization_on</span>
                   <span class="font-mono text-xs font-bold text-amber-300">
                     {formatearPuntos(rec.costoPuntos)} PTS

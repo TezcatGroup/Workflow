@@ -1171,7 +1171,9 @@
               </div>
             {:else}
               <div class="rounded-xl border border-tezcat-border bg-tezcat-bg/60 p-3 text-xs text-tezcat-textMuted">
-                El plazo del 20% ({data.plazoReasignacion?.diasPermitidos ?? 1} día{(data.plazoReasignacion?.diasPermitidos ?? 1) === 1 ? '' : 's'}) para solicitar cambio de asignación en esta tarea ha finalizado.
+                {data.plazoReasignacion?.tareaVencida
+                  ? 'La tarea venció. Ya no puedes solicitar su reasignación.'
+                  : 'El plazo para solicitar el cambio de asignación ha finalizado.'}
               </div>
             {/if}
           </Panel>

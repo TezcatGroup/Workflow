@@ -164,9 +164,11 @@ export function calcularPlazoReasignacion(creadoEn: Date, fechaLimite: Date | nu
   const diasTotales = Math.max(1, Math.ceil((finMs - inicioMs) / MS_POR_DIA));
 
   const diasPermitidos = Math.max(1, Math.round(diasTotales * 0.2));
-  const fechaLimiteSolicitud = new Date(inicioMs + diasPermitidos * MS_POR_DIA);
+  const limiteSolicitudMs = Math.min(inicioMs + diasPermitidos * MS_POR_DIA, finMs);
+  const fechaLimiteSolicitud = new Date(limiteSolicitudMs);
   const ahora = Date.now();
-  const dentroDePlazo = ahora <= fechaLimiteSolicitud.getTime();
+  const dentroDePlazo = ahora < limiteSolicitudMs;
+  const tareaVencida = ahora >= finMs;
   const diasRestantesSolicitud = Math.max(
     0,
     Math.ceil((fechaLimiteSolicitud.getTime() - ahora) / MS_POR_DIA)
@@ -177,6 +179,7 @@ export function calcularPlazoReasignacion(creadoEn: Date, fechaLimite: Date | nu
     diasPermitidos,
     fechaLimiteSolicitud,
     dentroDePlazo,
+    tareaVencida,
     diasRestantesSolicitud
   };
 }
@@ -650,41 +653,34 @@ export async function cambiarEstado(
 /* ------------------------------------------------------------------ */
 
 export async function solicitarReasignacionBD(actor: Actor, tareaId: string, motivoTxt: string) {
-  const tarea = await cargarTarea(tareaId);
-  if (actor.id !== tarea.responsableId) {
-    error(403, 'Solo el miembro actualmente responsable de la tarea puede solicitar su reasignación.');
-  }
-  if (tarea.estado !== 'ASIGNADA' && tarea.estado !== 'EN_PROCESO') {
-    error(400, 'Solo puedes solicitar cambio de asignación cuando la tarea está Asignada o En proceso.');
-  }
-
-  const plazo = calcularPlazoReasignacion(tarea.creadoEn, tarea.fechaLimite);
-  if (plazo && !plazo.dentroDePlazo) {
-    error(
-      400,
-      `El plazo del 20% (${plazo.diasPermitidos} día${plazo.diasPermitidos === 1 ? '' : 's'}) para solicitar reasignación ya expiró.`
-    );
-  }
-
+  if (!esUuid(tareaId)) error(404, 'Tarea inexistente');
   const motivo = motivoTxt.trim();
   if (!motivo) error(400, 'Debes escribir el motivo por el cual solicitas el cambio de asignación.');
   if (motivo.length > MAX_MOTIVO_DELEGACION) {
     error(400, `El motivo no puede superar los ${MAX_MOTIVO_DELEGACION} caracteres.`);
   }
 
-  const [pendiente] = await db
-    .select({ id: tareaDelegaciones.id })
-    .from(tareaDelegaciones)
-    .where(and(eq(tareaDelegaciones.tareaId, tarea.id), eq(tareaDelegaciones.estado, 'PENDIENTE')))
-    .limit(1);
+  const tarea = await db.transaction(async (tx) => {
+    const [actual] = await tx.select().from(tareas).where(eq(tareas.id, tareaId)).for('update');
+    if (!actual) error(404, 'Tarea inexistente');
+    if (actor.id !== actual.responsableId) {
+      error(403, 'Solo el miembro actualmente responsable de la tarea puede solicitar su reasignación.');
+    }
+    if (actual.estado !== 'ASIGNADA' && actual.estado !== 'EN_PROCESO') {
+      error(400, 'Solo puedes solicitar cambio de asignación cuando la tarea está Asignada o En proceso.');
+    }
 
-  if (pendiente) {
-    error(400, 'Ya existe una solicitud de reasignación pendiente de revisión por el encargado.');
-  }
+    const plazo = calcularPlazoReasignacion(actual.creadoEn, actual.fechaLimite);
+    if (plazo?.tareaVencida) error(400, 'La tarea venció. Ya no puedes solicitar su reasignación.');
+    if (plazo && !plazo.dentroDePlazo) error(400, 'El plazo para solicitar la reasignación ya expiró.');
 
-  await db.transaction(async (tx) => {
+    const [pendiente] = await tx.select({ id: tareaDelegaciones.id }).from(tareaDelegaciones)
+      .where(and(eq(tareaDelegaciones.tareaId, actual.id), eq(tareaDelegaciones.estado, 'PENDIENTE')))
+      .limit(1);
+    if (pendiente) error(400, 'Ya existe una solicitud de reasignación pendiente de revisión por el encargado.');
+
     await tx.insert(tareaDelegaciones).values({
-      tareaId: tarea.id,
+      tareaId: actual.id,
       solicitanteId: actor.id,
       destinatarioId: null,
       motivo,
@@ -692,11 +688,12 @@ export async function solicitarReasignacionBD(actor: Actor, tareaId: string, mot
     });
 
     await tx.insert(tareaEventos).values({
-      tareaId: tarea.id,
+      tareaId: actual.id,
       actorId: actor.id,
       tipo: 'SOLICITUD_REASIGNACION',
       detalle: { motivo }
     });
+    return actual;
   });
 
   const destinatarioJefe = tarea.revisorId ?? tarea.creadoPorId;
