@@ -204,12 +204,16 @@
 
   const puedeMarcarAvance = $derived(
     !reasignadaDelUsuario &&
-      (esResponsableActual || esEncargadoORevisor) &&
+      esResponsableActual &&
+      data.user.rol !== 'ADMIN' &&
       (data.tarea.estado === 'ASIGNADA' || data.tarea.estado === 'EN_PROCESO')
   );
 
   const puedeVerificarRevision = $derived(
-    !reasignadaDelUsuario && esEncargadoORevisor && data.tarea.estado === 'EN_REVISION'
+    !reasignadaDelUsuario && data.user.rol !== 'ADMIN' &&
+      (data.user.id === data.revisor?.id ||
+        (data.user.rol === 'ENCARGADO' && !!data.user.departamentoId && data.user.departamentoId === data.tarea.departamentoId)) &&
+      data.tarea.estado === 'EN_REVISION'
   );
 
   function transicionBloqueada(destino: string): { bloqueado: boolean; motivo: string } {
@@ -658,12 +662,12 @@
                     <input type="hidden" name="modo" value="RESPONSABLE" />
                     <button
                       type="submit"
-                      disabled={!puedeMarcarAvance || (c.verificadoEncargado && !esEncargadoORevisor)}
-                      title={c.verificadoEncargado && !esEncargadoORevisor
+                      disabled={!puedeMarcarAvance || c.verificadoEncargado}
+                      title={c.verificadoEncargado
                         ? 'Este criterio ya fue verificado y aprobado por el encargado'
                         : puedeMarcarAvance
                           ? 'Haz clic para marcar o desmarcar este criterio'
-                          : 'El avance solo se modifica en estado Asignada o En proceso'}
+                          : 'Solo el responsable puede marcar el avance en estado Asignada o En proceso'}
                       class="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-md border transition-colors disabled:cursor-default
                         {c.completado
                           ? 'border-emerald-400 bg-emerald-400/20 text-emerald-300'

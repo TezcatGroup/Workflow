@@ -486,43 +486,43 @@ export async function cambiarEstado(
   const esAprobacionRevision = tarea.estado === 'EN_REVISION' && destino === 'TERMINADA';
   const observaciones = observacionesTxt.trim();
 
-  const criterios = await db
-    .select({
-      id: tareaCriterios.id,
-      completado: tareaCriterios.completado,
-      verificadoEncargado: tareaCriterios.verificadoEncargado
-    })
-    .from(tareaCriterios)
-    .where(eq(tareaCriterios.tareaId, tarea.id));
-
-  if (destino === 'EN_REVISION' && criterios.some((c) => !c.completado)) {
-    error(400, 'Debes marcar todos los criterios de aceptación antes de enviar la tarea a revisión.');
-  }
-  if (esAprobacionRevision && criterios.some((c) => !c.verificadoEncargado)) {
-    error(400, 'Como encargado o revisor, debes verificar todos los criterios antes de aprobar la tarea.');
-  }
-
-  if (esDevolucionRevision) {
-    if (!observaciones) {
-      error(400, 'Escribe un mensaje explicando al miembro por qué se le devuelve la actividad.');
-    }
-    if (observaciones.length > MAX_OBSERVACIONES_REVISION) {
-      error(400, `El mensaje de devolución no puede superar los ${MAX_OBSERVACIONES_REVISION} caracteres.`);
-    }
-    if (criterios.length > 0 && criterios.every((c) => c.verificadoEncargado)) {
-      error(
-        400,
-        'Deja sin verificar en el checklist al menos un criterio que el miembro no haya alcanzado a cumplir antes de devolver la tarea.'
-      );
-    }
-  }
-
   await db.transaction(async (tx) => {
     const actualizadas = await tx.update(tareas)
       .set({ estado: destino, actualizadoEn: new Date() })
       .where(and(eq(tareas.id, tarea.id), eq(tareas.estado, tarea.estado)))
       .returning({ id: tareas.id });
     if (actualizadas.length === 0) error(409, 'La tarea cambió de estado mientras la editabas. Recarga la página');
+
+    const criterios = await tx
+      .select({
+        id: tareaCriterios.id,
+        completado: tareaCriterios.completado,
+        verificadoEncargado: tareaCriterios.verificadoEncargado
+      })
+      .from(tareaCriterios)
+      .where(eq(tareaCriterios.tareaId, tarea.id));
+
+    if (destino === 'EN_REVISION' && criterios.some((c) => !c.completado)) {
+      error(400, 'Debes marcar todos los criterios de aceptación antes de enviar la tarea a revisión.');
+    }
+    if (esAprobacionRevision && criterios.some((c) => !c.verificadoEncargado)) {
+      error(400, 'Como encargado o revisor, debes verificar todos los criterios antes de aprobar la tarea.');
+    }
+
+    if (esDevolucionRevision) {
+      if (!observaciones) {
+        error(400, 'Escribe un mensaje explicando al miembro por qué se le devuelve la actividad.');
+      }
+      if (observaciones.length > MAX_OBSERVACIONES_REVISION) {
+        error(400, `El mensaje de devolución no puede superar los ${MAX_OBSERVACIONES_REVISION} caracteres.`);
+      }
+      if (criterios.length > 0 && criterios.every((c) => c.verificadoEncargado)) {
+        error(
+          400,
+          'Deja sin verificar en el checklist al menos un criterio que el miembro no haya alcanzado a cumplir antes de devolver la tarea.'
+        );
+      }
+    }
 
     if (esDevolucionRevision) {
       await tx
@@ -1210,48 +1210,37 @@ export async function toggleCriterioBD(
   criterioId: string,
   modo: 'RESPONSABLE' | 'ENCARGADO'
 ) {
-  const tarea = await cargarTarea(tareaId);
-  const { acceso, esExResponsable } = await puedeVerConReasignacion(actor, tarea);
-  if (!acceso) error(403, 'No tienes acceso a esta tarea');
-  if (esExResponsable) error(403, 'Se ha validado la reasignación de esta actividad; ya no puedes modificar el checklist.');
-  if (actor.rol === 'ADMIN') error(403, 'El administrador solo tiene permisos de lectura');
+  if (!esUuid(tareaId)) error(404, 'Tarea inexistente');
   if (!esUuid(criterioId)) error(400, 'Identificador de criterio inválido');
 
-  const [actual] = await db
-    .select()
-    .from(tareaCriterios)
-    .where(and(eq(tareaCriterios.id, criterioId), eq(tareaCriterios.tareaId, tarea.id)))
-    .limit(1);
+  await db.transaction(async (tx) => {
+    const [tarea] = await tx.select().from(tareas).where(eq(tareas.id, tareaId)).for('update');
+    if (!tarea) error(404, 'Tarea inexistente');
+    if (!puedeVer(actor, tarea)) error(403, 'No tienes acceso para modificar esta tarea');
+    if (actor.rol === 'ADMIN') error(403, 'El administrador solo tiene permisos de lectura');
 
-  if (!actual) error(404, 'El criterio no pertenece a esta tarea');
+    const criterio = and(eq(tareaCriterios.id, criterioId), eq(tareaCriterios.tareaId, tarea.id));
+    const [actual] = await tx.select().from(tareaCriterios).where(criterio);
+    if (!actual) error(404, 'El criterio no pertenece a esta tarea');
 
-  if (modo === 'ENCARGADO') {
-    if (!cumpleRol(actor, 'REVISOR', tarea)) {
-      error(403, 'Solo el encargado o revisor puede verificar criterios');
+    if (modo === 'ENCARGADO') {
+      if (!cumpleRol(actor, 'REVISOR', tarea)) error(403, 'Solo el encargado o revisor puede verificar criterios');
+      if (tarea.estado !== 'EN_REVISION') {
+        error(400, 'La verificación del encargado solo se realiza cuando la tarea está en revisión');
+      }
+      await tx.update(tareaCriterios).set({ verificadoEncargado: !actual.verificadoEncargado }).where(criterio);
+      return;
     }
-    if (tarea.estado !== 'EN_REVISION') {
-      error(400, 'La verificación del encargado solo se realiza cuando la tarea está en revisión');
-    }
-    await db
-      .update(tareaCriterios)
-      .set({ verificadoEncargado: !actual.verificadoEncargado })
-      .where(eq(tareaCriterios.id, criterioId));
-  } else {
-    const puedeAvanzar = cumpleRol(actor, 'RESPONSABLE', tarea) || cumpleRol(actor, 'REVISOR', tarea);
-    if (!puedeAvanzar) {
-      error(403, 'Solo el responsable asignado puede marcar el avance del checklist');
-    }
+
+    if (!cumpleRol(actor, 'RESPONSABLE', tarea)) error(403, 'Solo el responsable asignado puede marcar el avance del checklist');
     if (tarea.estado !== 'ASIGNADA' && tarea.estado !== 'EN_PROCESO') {
       error(400, 'El checklist de avance solo se modifica cuando la tarea está asignada o en proceso');
     }
-    if (actual.verificadoEncargado && !cumpleRol(actor, 'REVISOR', tarea)) {
+    if (actual.verificadoEncargado) {
       error(400, 'Este criterio ya fue verificado por el encargado y no requiere modificarse.');
     }
-    await db
-      .update(tareaCriterios)
-      .set({ completado: !actual.completado })
-      .where(eq(tareaCriterios.id, criterioId));
-  }
+    await tx.update(tareaCriterios).set({ completado: !actual.completado }).where(criterio);
+  });
 }
 
 /* ------------------------------------------------------------------ */
