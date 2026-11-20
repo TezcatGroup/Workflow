@@ -12,7 +12,7 @@
     titulo: string;
     descripcion: string;
     encargado: string;
-    fechaLimite: string;
+    fechaLimite: string | null;
     etiquetas: Etiqueta[];
   };
 
@@ -32,14 +32,16 @@
     return Math.ceil((new Date(fecha).getTime() - Date.now()) / 86_400_000);
   }
 
-  function claseFecha(fecha: string): string {
+  function claseFecha(fecha: string | null): string {
+    if (!fecha) return 'text-tezcat-textSecondary';
     const dias = diasRestantes(fecha);
     if (dias < 0) return 'text-red-300'; // vencida
     if (dias <= 3) return 'text-amber-300'; // por vencer
     return 'text-tezcat-textSecondary';
   }
 
-  function formatearFecha(fecha: string): string {
+  function formatearFecha(fecha: string | null): string {
+    if (!fecha) return 'Sin fecha límite';
     return new Date(fecha).toLocaleDateString('es-MX', {
       day: 'numeric',
       month: 'short'

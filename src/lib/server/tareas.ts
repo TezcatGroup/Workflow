@@ -70,14 +70,15 @@ export async function editarTarea(user: App.Locals['user'], id: string, form: Fo
   const actor = exigirEncargado(user);
   const titulo = campo(form, 'titulo'), descripcion = campo(form, 'descripcion');
   const prioridad = campo(form, 'prioridad'), motivo = campo(form, 'motivo');
-  const fechaLimite = new Date(campo(form, 'fechaLimite'));
-  if (!/^[0-9a-f-]{36}$/i.test(id) || !titulo || titulo.length > MAX_TITULO || descripcion.length > MAX_DESCRIPCION || !PRIORIDADES.includes(prioridad as typeof PRIORIDADES[number]) || !motivo || motivo.length > 1000 || !Number.isFinite(fechaLimite.getTime())) error(400, 'Revisa título, descripción, prioridad, fecha y motivo');
+  const fechaTxt = campo(form, 'fechaLimite');
+  const fechaLimite = fechaTxt ? new Date(fechaTxt) : null;
+  if (!/^[0-9a-f-]{36}$/i.test(id) || !titulo || titulo.length > MAX_TITULO || descripcion.length > MAX_DESCRIPCION || !PRIORIDADES.includes(prioridad as typeof PRIORIDADES[number]) || !motivo || motivo.length > 1000 || (fechaLimite && !Number.isFinite(fechaLimite.getTime()))) error(400, 'Revisa título, descripción, prioridad, fecha y motivo');
   await db.transaction(async tx => {
     const [tarea] = await tx.select().from(tareas).where(eq(tareas.id, id)).for('update');
     if (!tarea || tarea.departamentoId !== actor.departamentoId) error(404, 'Tarea no disponible');
     if (!['ASIGNADA', 'EN_PROCESO'].includes(tarea.estado)) error(400, 'Solo se editan tareas asignadas o en proceso');
     if (campo(form, 'version') !== tarea.actualizadoEn.toISOString()) error(409, 'La tarea cambió. Recarga la página antes de editarla');
-    if (fechaLimite.getTime() !== tarea.fechaLimite.getTime() && fechaLimite.getTime() <= Date.now()) error(400, 'La nueva fecha límite debe estar en el futuro');
+    if (fechaLimite && fechaLimite.getTime() !== tarea.fechaLimite?.getTime() && fechaLimite.getTime() <= Date.now()) error(400, 'La nueva fecha límite debe estar en el futuro');
     const anteriores = await tx.select({ id: tareaEtiquetas.etiquetaId }).from(tareaEtiquetas)
       .where(eq(tareaEtiquetas.tareaId, id)).orderBy(asc(tareaEtiquetas.etiquetaId));
     const etiquetasAntes = anteriores.map(({ id }) => id);
@@ -98,8 +99,8 @@ export async function editarTarea(user: App.Locals['user'], id: string, form: Fo
       await tx.delete(tareaEtiquetas).where(and(eq(tareaEtiquetas.tareaId, id), inArray(tareaEtiquetas.etiquetaId, retiradas)));
     }
     const antes = { titulo: tarea.titulo, descripcion: tarea.descripcion, prioridad: tarea.prioridad,
-      fechaLimite: tarea.fechaLimite.toISOString(), etiquetas: etiquetasAntes };
-    const despues = { titulo, descripcion, prioridad, fechaLimite: fechaLimite.toISOString(), etiquetas: etiquetasDespues };
+      fechaLimite: tarea.fechaLimite?.toISOString() ?? null, etiquetas: etiquetasAntes };
+    const despues = { titulo, descripcion, prioridad, fechaLimite: fechaLimite?.toISOString() ?? null, etiquetas: etiquetasDespues };
     await tx.update(tareas).set({ titulo, descripcion, prioridad, fechaLimite, actualizadoEn: new Date() }).where(eq(tareas.id, id));
     await tx.insert(tareaEventos).values({ tareaId: id, actorId: actor.id, tipo: 'TAREA_EDITADA', detalle: { antes, despues, motivo } });
   });
@@ -156,7 +157,8 @@ export function construirTimeline(
 /* TW-11: Cálculo de ventana del 20% en días enteros para delegar     */
 /* ------------------------------------------------------------------ */
 
-export function calcularPlazoReasignacion(creadoEn: Date, fechaLimite: Date) {
+export function calcularPlazoReasignacion(creadoEn: Date, fechaLimite: Date | null) {
+  if (!fechaLimite) return null;
   const inicioMs = new Date(creadoEn).getTime();
   const finMs = new Date(fechaLimite).getTime();
   const diasTotales = Math.max(1, Math.ceil((finMs - inicioMs) / MS_POR_DIA));
@@ -201,8 +203,8 @@ function validarDescripcion(value: string): string | null {
   return value;
 }
 
-function validarFechaLimite(value: string): Date {
-  if (!value) error(400, 'La fecha límite es obligatoria');
+function validarFechaLimite(value: string): Date | null {
+  if (!value) return null;
   const texto = /^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T23:59:59` : value;
   const fecha = new Date(texto);
   if (Number.isNaN(fecha.getTime())) error(400, 'La fecha límite es inválida');
@@ -234,6 +236,7 @@ function validarRecompensa(value: string, nombre: string): number {
 
 function validarCriterios(valores: FormDataEntryValue[]): string[] {
   const criterios = valores.map((v) => String(v).trim()).filter((v) => v.length > 0);
+  if (!criterios.length) error(400, 'Agrega al menos un criterio de aceptación');
   if (criterios.length > MAX_CRITERIOS) error(400, `Máximo ${MAX_CRITERIOS} criterios por tarea`);
   if (criterios.some((c) => c.length > MAX_CRITERIO)) {
     error(400, `Cada criterio puede tener máximo ${MAX_CRITERIO} caracteres`);
@@ -359,17 +362,15 @@ export async function crearTarea(actor: Encargado, form: FormData) {
     }).returning({ id: tareas.id, numero: tareas.numero });
 
     if (etiquetaIds.length) await tx.insert(tareaEtiquetas).values(etiquetaIds.map((etiquetaId) => ({ tareaId: tarea.id, etiquetaId })));
-    if (criterios.length > 0) {
-      await tx.insert(tareaCriterios).values(
-        criterios.map((descripcionCriterio) => ({ tareaId: tarea.id, descripcion: descripcionCriterio }))
-      );
-    }
+    await tx.insert(tareaCriterios).values(
+      criterios.map((descripcionCriterio) => ({ tareaId: tarea.id, descripcion: descripcionCriterio }))
+    );
 
     await tx.insert(tareaEventos).values({
       tareaId: tarea.id,
       actorId: actor.id,
       tipo: 'TAREA_CREADA',
-      detalle: { responsableId, revisorId, fechaLimite: fechaLimite.toISOString(), criterios: criterios.length }
+      detalle: { responsableId, revisorId, fechaLimite: fechaLimite?.toISOString() ?? null, criterios: criterios.length }
     });
 
     return tarea;
@@ -381,7 +382,7 @@ export async function crearTarea(actor: Encargado, form: FormData) {
       usuarioId: responsableId,
       tareaId: nuevaTarea.id,
       titulo: `📌 Nueva tarea asignada: ${recortarTitulo(titulo)}`,
-      mensaje: `${actor.nombre} te asignó la actividad "${titulo}" con fecha límite ${fechaLimite.toLocaleDateString('es-MX')}.`,
+      mensaje: `${actor.nombre} te asignó la actividad "${titulo}"${fechaLimite ? ` con fecha límite ${fechaLimite.toLocaleDateString('es-MX')}` : ''}.`,
       enlace: `/tareas/${nuevaTarea.id}`
     });
   }
@@ -658,7 +659,7 @@ export async function solicitarReasignacionBD(actor: Actor, tareaId: string, mot
   }
 
   const plazo = calcularPlazoReasignacion(tarea.creadoEn, tarea.fechaLimite);
-  if (!plazo.dentroDePlazo) {
+  if (plazo && !plazo.dentroDePlazo) {
     error(
       400,
       `El plazo del 20% (${plazo.diasPermitidos} día${plazo.diasPermitidos === 1 ? '' : 's'}) para solicitar reasignación ya expiró.`

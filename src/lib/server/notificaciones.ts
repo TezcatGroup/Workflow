@@ -127,7 +127,7 @@ export async function verificarVencimientosTareasBD(forzar = false): Promise<num
     let generadas = 0;
 
     for (const t of tareasCriticas) {
-      if (!t.responsableId) continue;
+      if (!t.responsableId || !t.fechaLimite) continue;
 
       const diffMs = new Date(t.fechaLimite).getTime() - ahoraMs;
       const horasRestantes = Math.ceil(diffMs / MS_POR_HORA);

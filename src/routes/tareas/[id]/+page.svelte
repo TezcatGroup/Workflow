@@ -174,7 +174,7 @@
   }
 
   const vencida = $derived(
-    data.tarea.estado !== 'TERMINADA' && new Date(data.tarea.fechaLimite).getTime() < Date.now()
+    data.tarea.estado !== 'TERMINADA' && !!data.tarea.fechaLimite && new Date(data.tarea.fechaLimite).getTime() < Date.now()
   );
 
   // =========================================================================
@@ -1100,16 +1100,18 @@
                   Motivo enviado: "{data.solicitudPendiente.motivo}"
                 </p>
               </div>
-            {:else if data.plazoReasignacion?.dentroDePlazo}
+            {:else if !data.plazoReasignacion || data.plazoReasignacion.dentroDePlazo}
               <div class="space-y-3 text-xs">
-                <div class="rounded-xl border border-tezcat-border bg-tezcat-bg p-3">
-                  <p class="font-mono text-[10px] text-tezcat-cyan uppercase">
-                    Plazo disponible
-                  </p>
-                  <p class="mt-1 text-tezcat-textSecondary">
-                    Tienes hasta el <strong>{fecha(data.plazoReasignacion.fechaLimiteSolicitud)}</strong> para solicitar reasignación.
-                  </p>
-                </div>
+                {#if data.plazoReasignacion}
+                  <div class="rounded-xl border border-tezcat-border bg-tezcat-bg p-3">
+                    <p class="font-mono text-[10px] text-tezcat-cyan uppercase">
+                      Plazo disponible
+                    </p>
+                    <p class="mt-1 text-tezcat-textSecondary">
+                      Tienes hasta el <strong>{fecha(data.plazoReasignacion.fechaLimiteSolicitud)}</strong> para solicitar reasignación.
+                    </p>
+                  </div>
+                {/if}
 
                 {#if !mostrarFormularioSolicitud}
                   <button
@@ -1227,7 +1229,12 @@
                       <form method="POST" action="?/eliminarArchivo" use:enhance>
                         <input type="hidden" name="archivoId" value={a.id} />
                         <button
-                          type="submit"
+                          type="button"
+                          onclick={(event) => {
+                            if (confirm(`¿Estás seguro de que quieres eliminar el adjunto "${a.nombre}"?`)) {
+                              event.currentTarget.form?.requestSubmit();
+                            }
+                          }}
                           title="Eliminar archivo"
                           class="rounded p-1 text-tezcat-textMuted transition-colors hover:bg-tezcat-danger/15 hover:text-red-300"
                         >

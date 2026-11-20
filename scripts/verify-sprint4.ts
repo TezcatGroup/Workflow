@@ -70,7 +70,7 @@ async function crearUsuario(adminCookie: string, nombre: string, rol: string, de
 }
 
 function camposTarea(
-  responsableId: string, titulo: string, extra: Record<string, string> = {}, criterios: string[] = []
+  responsableId: string, titulo: string, extra: Record<string, string> = {}, criterios: string[] = ['Entregar resultado']
 ): [string, string][] {
   const campos: Record<string, string> = { titulo, responsableId, fechaLimite: manana, ...extra };
   return [...Object.entries(campos), ...criterios.map((c): [string, string] => ['criterios', c])];
@@ -147,7 +147,7 @@ try {
   const invalidas: Array<[string, [string, string][]]> = [
     ['sin título', camposTarea(responsable.id, '')],
     ['sin responsable', camposTarea('', `Sin responsable ${suffix}`)],
-    ['sin fecha límite', camposTarea(responsable.id, `Sin fecha ${suffix}`, { fechaLimite: '' })],
+    ['sin criterios', camposTarea(responsable.id, `Sin criterios ${suffix}`, {}, ['   '])],
     ['fecha pasada', camposTarea(responsable.id, `Fecha pasada ${suffix}`, { fechaLimite: '2020-01-01' })],
     ['prioridad inválida', camposTarea(responsable.id, `Prioridad mala ${suffix}`, { prioridad: 'CRITICA' })],
     ['dificultad inválida', camposTarea(responsable.id, `Dificultad mala ${suffix}`, { dificultad: 'IMPOSIBLE' })],
@@ -158,7 +158,12 @@ try {
     assert.equal(res.status, 400, `caso inválido: ${caso}`);
   }
   assert.equal(await totalTareasDe(encargado.id), antes, 'ninguna tarea inválida se guardó');
-  passed('TC-10', 'se rechazan sin título, responsable o fecha límite, con fecha pasada y con valores fuera de catálogo');
+  const sinFechaTitulo = `Sin fecha ${suffix}`;
+  const sinFecha = await accion('/tareas/nueva', 'crear',
+    camposTarea(responsable.id, sinFechaTitulo, { fechaLimite: '' }), cEncargado);
+  assert.equal(sinFecha.status, 303);
+  assert.equal((await tareaPorTitulo(sinFechaTitulo)).fechaLimite, null);
+  passed('TC-10', 'se admite crear sin fecha límite y se rechazan tareas sin título, responsable o criterios, con fecha pasada o valores fuera de catálogo');
 
   /* ---------------- TC-11: criterios como checklist ---------------- */
   const criterios = await db.select().from(tareaCriterios).where(eq(tareaCriterios.tareaId, t1.id));
@@ -259,7 +264,9 @@ try {
   const t3 = await tareaPorTitulo(t3Titulo);
   const rutaT3 = `/tareas/${t3.id}`;
   await accion(rutaT3, 'cambiarEstado', [['estado', 'EN_PROCESO']], cResponsable);
-  await accion(rutaT3, 'cambiarEstado', [['estado', 'EN_REVISION']], cResponsable);
+  const [criterioT3] = await db.select().from(tareaCriterios).where(eq(tareaCriterios.tareaId, t3.id));
+  assert.equal((await accion(rutaT3, 'toggleCriterio', [['criterioId', criterioT3.id]], cResponsable)).status, 200);
+  assert.equal((await accion(rutaT3, 'cambiarEstado', [['estado', 'EN_REVISION']], cResponsable)).status, 200);
   assert.equal((await accion(rutaT3, 'cambiarEstado', [['estado', 'EN_PROCESO']], cEncargado)).status, 400,
     'devolver requiere observaciones');
   assert.equal((await accion(rutaT3, 'cambiarEstado', [['estado', 'EN_PROCESO'], ['observaciones', 'Completar la evidencia']], cEncargado)).status, 200);

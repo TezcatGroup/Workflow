@@ -71,6 +71,13 @@
       "when": 1794805200000,
       "tag": "0009_google_login",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1795132800000,
+      "tag": "0010_fecha_limite_opcional",
+      "breakpoints": true
     }
   ]
 }

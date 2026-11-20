@@ -45,7 +45,8 @@
   const fechaCorta = (d: Date | string | null) =>
     d ? new Date(d).toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' }) : '—';
 
-  function diasRestantes(d: Date | string): number {
+  function diasRestantes(d: Date | string | null): number {
+    if (!d) return Infinity;
     return Math.ceil((new Date(d).getTime() - Date.now()) / 86_400_000);
   }
 

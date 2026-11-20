@@ -76,7 +76,7 @@ export const tareas = pgTable('tareas', {
   numero: serial('numero'),
   impacto: varchar('impacto', { length: 80 }),
   estimadoMinutos: integer('estimado_minutos'),
-  fechaLimite: timestamp('fecha_limite', { withTimezone: true }).notNull(),
+  fechaLimite: timestamp('fecha_limite', { withTimezone: true }),
   xpOfrecido: integer('xp_ofrecido'),
   puntosOfrecidos: integer('puntos_ofrecidos'),
   creadoEn: timestamp('creado_en', { withTimezone: true }).notNull().defaultNow(),

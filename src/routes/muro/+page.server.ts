@@ -12,7 +12,7 @@ export const load: PageServerLoad = async ({ locals }) => {
     .where(and(eq(tareas.departamentoId, user.departamentoId), eq(tareas.tipo, 'OPCIONAL'), eq(tareas.estado, 'ASIGNADA'), isNull(tareas.responsableId))).orderBy(asc(tareas.fechaLimite)) : [];
   const relaciones = disponibles.length ? await db.select({ tareaId: tareaEtiquetas.tareaId, etiqueta: etiquetas }).from(tareaEtiquetas).innerJoin(etiquetas, eq(etiquetas.id, tareaEtiquetas.etiquetaId)).where(and(inArray(tareaEtiquetas.tareaId, disponibles.map(({ tarea }) => tarea.id)), eq(etiquetas.activo, true))) : [];
   const miembros = user.rol === 'ENCARGADO' && user.departamentoId ? await db.select({ id: usuarios.id, nombre: usuarios.nombre }).from(usuarios).where(and(eq(usuarios.departamentoId, user.departamentoId), eq(usuarios.rol, 'MIEMBRO'), eq(usuarios.activo, true))).orderBy(asc(usuarios.nombre)) : [];
-  return { user, miembros, oportunidades: disponibles.map(({ tarea, encargado }) => ({ ...tarea, descripcion: tarea.descripcion ?? '', encargado: encargado ?? 'Encargado', fechaLimite: tarea.fechaLimite.toISOString(), etiquetas: relaciones.filter((r) => r.tareaId === tarea.id).map((r) => r.etiqueta) })) };
+  return { user, miembros, oportunidades: disponibles.map(({ tarea, encargado }) => ({ ...tarea, descripcion: tarea.descripcion ?? '', encargado: encargado ?? 'Encargado', fechaLimite: tarea.fechaLimite?.toISOString() ?? null, etiquetas: relaciones.filter((r) => r.tareaId === tarea.id).map((r) => r.etiqueta) })) };
 };
 export const actions: Actions = {
   tomar: async ({ locals, request }) => {

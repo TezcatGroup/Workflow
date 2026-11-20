@@ -3,14 +3,20 @@
   import type { SubmitFunction } from '@sveltejs/kit';
   import { onMount } from 'svelte';
   type Etiqueta = { id: string; nombre: string; activo: boolean };
-  let { tarea, asignadas, disponibles, abierto = $bindable(false) }: { abierto?: boolean; asignadas: Etiqueta[]; disponibles: Etiqueta[]; tarea: { titulo: string; descripcion: string | null; prioridad: string | null; fechaLimite: Date | string; actualizadoEn: Date | string } } = $props();
+  let { tarea, asignadas, disponibles, abierto = $bindable(false) }: { abierto?: boolean; asignadas: Etiqueta[]; disponibles: Etiqueta[]; tarea: { titulo: string; descripcion: string | null; prioridad: string | null; fechaLimite: Date | string | null; actualizadoEn: Date | string } } = $props();
   const opciones = $derived([...asignadas, ...disponibles.filter((et) => !asignadas.some((a) => a.id === et.id))]);
   let fecha = $state(''), fechaInicial = $state('');
-  onMount(() => { const d = new Date(tarea.fechaLimite); fecha = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0,16); fechaInicial = fecha; });
+  onMount(() => {
+    if (!tarea.fechaLimite) return;
+    const d = new Date(tarea.fechaLimite);
+    fechaInicial = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    fecha = fechaInicial;
+  });
   const guardarEdicion: SubmitFunction = ({ formData }) => {
     const fechaLocal = String(formData.get('fechaLimiteLocal') ?? '');
-    const elegida = fechaLocal === fechaInicial ? new Date(tarea.fechaLimite) : new Date(fechaLocal);
-    formData.set('fechaLimite', Number.isFinite(elegida.getTime()) ? elegida.toISOString() : '');
+    const valor = fechaLocal && fechaLocal === fechaInicial ? tarea.fechaLimite : fechaLocal;
+    const elegida = valor ? new Date(valor) : null;
+    formData.set('fechaLimite', elegida && Number.isFinite(elegida.getTime()) ? elegida.toISOString() : fechaLocal);
     return async ({ update }) => {
       await update({ reset: false });
     };
@@ -25,7 +31,7 @@
     <label class="sm:col-span-2">Título<input class={campo} name="titulo" value={tarea.titulo} maxlength="200" required /></label>
     <label class="sm:col-span-2">Descripción<textarea class={campo} name="descripcion" maxlength="5000" rows="3">{tarea.descripcion ?? ''}</textarea></label>
     <label>Prioridad<select class={campo} name="prioridad" value={tarea.prioridad ?? 'MEDIA'}>{#each ['BAJA','MEDIA','ALTA','URGENTE'] as p}<option value={p}>{p}</option>{/each}</select></label>
-    <label>Fecha límite (hora de tu equipo)<input class={campo} type="datetime-local" name="fechaLimiteLocal" bind:value={fecha} required /></label>
+    <label>Fecha límite opcional (hora de tu equipo)<input class={campo} type="datetime-local" name="fechaLimiteLocal" bind:value={fecha} /></label>
     <fieldset class="sm:col-span-2">
       <legend class="font-semibold">Etiquetas</legend>
       <input type="hidden" name="editarEtiquetas" value="1" />

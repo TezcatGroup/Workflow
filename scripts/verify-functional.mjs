@@ -28,7 +28,7 @@ async function login(email, pass) {
 }
 async function task(label, member = actors.member) {
   const r = await post('/tareas/nueva', 'crear', actors.manager, { titulo: `${label} ${suffix}`, responsableId: member.id,
-    fechaLimite: new Date(Date.now() + 10 * 86400000).toISOString().slice(0, 10) });
+    fechaLimite: new Date(Date.now() + 10 * 86400000).toISOString().slice(0, 10), criterios: 'Entregar resultado' });
   assert.equal(r.status, 303);
   return r.headers.get('location');
 }
