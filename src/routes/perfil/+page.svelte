@@ -210,51 +210,60 @@
     </section>
 
     {#if data.user.rol === 'ENCARGADO' || data.user.rol === 'MIEMBRO'}
-      <Panel titulo="Ajustes de perfil" descripcion="Tu nombre, correo, rol y departamento los administra el administrador.">
-        <div class="grid gap-8 md:grid-cols-2">
-          <div class="min-w-0 space-y-4">
-            <h3 class="font-semibold text-white">Foto de perfil</h3>
-            <p id="ayuda-foto" class="text-sm text-tezcat-textSecondary">JPG, PNG o WebP sin animación, de hasta 2 MB y 16 megapíxeles. La foto se recorta a un cuadrado.</p>
-            {#if form && 'ajuste' in form && form.ajuste === 'foto'}
-              {#if form.error}<p role="alert" class="text-sm text-red-300">{form.error}</p>{/if}
-              {#if form.ok}<p role="status" class="text-sm text-emerald-300">{form.ok}</p>{/if}
-            {/if}
-            <form method="POST" action="?/guardarFoto" enctype="multipart/form-data" class="space-y-4" use:enhance={() => {
-              guardandoFoto = true;
-              return async ({ update }) => { try { await update(); } finally { guardandoFoto = false; } };
-            }}>
-              <label for="foto" class="block text-sm font-medium">Seleccionar imagen</label>
-              <input id="foto" name="foto" type="file" accept="image/jpeg,image/png,image/webp" required aria-describedby="ayuda-foto" class="block w-full rounded-lg border border-tezcat-border bg-tezcat-bg p-2 text-sm file:mr-3 file:rounded file:border-0 file:bg-tezcat-surfaceAlt file:px-3 file:py-2 file:text-tezcat-textPrimary focus-visible:outline-2 focus-visible:outline-tezcat-cyan" />
-              <button disabled={guardandoFoto} class="rounded-lg bg-tezcat-cyan px-4 py-2.5 text-sm font-semibold text-slate-950 hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-tezcat-cyan disabled:opacity-50">{guardandoFoto ? 'Guardando…' : 'Guardar foto'}</button>
-            </form>
-            {#if data.user.fotoPerfil}
-              <form method="POST" action="?/quitarFoto" use:enhance={() => {
-                guardandoFoto = true;
-                return async ({ update }) => { try { await update(); } finally { guardandoFoto = false; } };
-              }}>
-                <button disabled={guardandoFoto} class="rounded-lg border border-tezcat-border px-4 py-2.5 text-sm hover:bg-tezcat-surfaceAlt focus-visible:outline-2 focus-visible:outline-tezcat-cyan disabled:opacity-50">Quitar foto</button>
-              </form>
-            {/if}
-          </div>
-          <form method="POST" action="?/cambiarPassword" class="min-w-0 space-y-4" use:enhance={() => {
-            guardandoPassword = true;
-            return async ({ update }) => { try { await update(); } finally { guardandoPassword = false; } };
-          }}>
-            <h3 class="font-semibold text-white">Cambiar contraseña</h3>
-            <p id="ayuda-password" class="text-sm text-tezcat-textSecondary">Usa entre 12 y 128 caracteres. Al cambiarla, se cerrarán todas tus sesiones y tendrás que iniciar sesión de nuevo.</p>
-            {#if form && 'ajuste' in form && form.ajuste === 'password' && form.error}
-              <p role="alert" class="text-sm text-red-300">{form.error}</p>
-            {/if}
-            {#each [{ id: 'actual', label: 'Contraseña actual', autocomplete: 'current-password' }, { id: 'nueva', label: 'Nueva contraseña', autocomplete: 'new-password' }, { id: 'confirmacion', label: 'Confirmar nueva contraseña', autocomplete: 'new-password' }] as campo}
-              <div class="space-y-1.5">
-                <label for={campo.id} class="block text-sm font-medium">{campo.label}</label>
-                <input id={campo.id} name={campo.id} type="password" autocomplete={campo.id === 'actual' ? 'current-password' : 'new-password'} required minlength={campo.id === 'actual' ? undefined : 12} maxlength={campo.id === 'actual' ? 1024 : 128} aria-describedby="ayuda-password" class="w-full rounded-lg border border-tezcat-border bg-tezcat-bg px-3 py-2.5 text-sm focus:border-tezcat-cyan focus:outline-none focus:ring-1 focus:ring-tezcat-cyan" />
+      <details class="group" open={Boolean(form && 'ajuste' in form && form.ajuste)}>
+        <summary class="inline-flex cursor-pointer list-none items-center gap-2 rounded-lg border border-tezcat-border bg-tezcat-card px-4 py-2.5 text-sm font-semibold text-tezcat-cyan hover:bg-tezcat-surfaceAlt focus-visible:outline-2 focus-visible:outline-tezcat-cyan [&::-webkit-details-marker]:hidden">
+          <span aria-hidden="true" class="material-symbols-outlined text-lg">settings</span>
+          Ajustes de perfil
+          <span aria-hidden="true" class="material-symbols-outlined text-lg transition-transform group-open:rotate-180">expand_more</span>
+        </summary>
+        <div class="mt-4">
+          <Panel titulo="Foto y contraseña" descripcion="Tu nombre, correo, rol y departamento los administra el administrador.">
+            <div class="grid gap-8 md:grid-cols-2">
+              <div class="min-w-0 space-y-4">
+                <h3 class="font-semibold text-white">Foto de perfil</h3>
+                <p id="ayuda-foto" class="text-sm text-tezcat-textSecondary">JPG, PNG o WebP sin animación, de hasta 2 MB y 16 megapíxeles. La foto se recorta a un cuadrado.</p>
+                {#if form && 'ajuste' in form && form.ajuste === 'foto'}
+                  {#if form.error}<p role="alert" class="text-sm text-red-300">{form.error}</p>{/if}
+                  {#if form.ok}<p role="status" class="text-sm text-emerald-300">{form.ok}</p>{/if}
+                {/if}
+                <form method="POST" action="?/guardarFoto" enctype="multipart/form-data" class="space-y-4" use:enhance={() => {
+                  guardandoFoto = true;
+                  return async ({ update }) => { try { await update(); } finally { guardandoFoto = false; } };
+                }}>
+                  <label for="foto" class="block text-sm font-medium">Seleccionar imagen</label>
+                  <input id="foto" name="foto" type="file" accept="image/jpeg,image/png,image/webp" required aria-describedby="ayuda-foto" class="block w-full rounded-lg border border-tezcat-border bg-tezcat-bg p-2 text-sm file:mr-3 file:rounded file:border-0 file:bg-tezcat-surfaceAlt file:px-3 file:py-2 file:text-tezcat-textPrimary focus-visible:outline-2 focus-visible:outline-tezcat-cyan" />
+                  <button disabled={guardandoFoto} class="rounded-lg bg-tezcat-cyan px-4 py-2.5 text-sm font-semibold text-slate-950 hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-tezcat-cyan disabled:opacity-50">{guardandoFoto ? 'Guardando…' : 'Guardar foto'}</button>
+                </form>
+                {#if data.user.fotoPerfil}
+                  <form method="POST" action="?/quitarFoto" use:enhance={() => {
+                    guardandoFoto = true;
+                    return async ({ update }) => { try { await update(); } finally { guardandoFoto = false; } };
+                  }}>
+                    <button disabled={guardandoFoto} class="rounded-lg border border-tezcat-border px-4 py-2.5 text-sm hover:bg-tezcat-surfaceAlt focus-visible:outline-2 focus-visible:outline-tezcat-cyan disabled:opacity-50">Quitar foto</button>
+                  </form>
+                {/if}
               </div>
-            {/each}
-            <button disabled={guardandoPassword} class="rounded-lg bg-tezcat-cyan px-4 py-2.5 text-sm font-semibold text-slate-950 hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-tezcat-cyan disabled:opacity-50">{guardandoPassword ? 'Cambiando…' : 'Cambiar contraseña'}</button>
-          </form>
+              <form method="POST" action="?/cambiarPassword" class="min-w-0 space-y-4" use:enhance={() => {
+                guardandoPassword = true;
+                return async ({ update }) => { try { await update(); } finally { guardandoPassword = false; } };
+              }}>
+                <h3 class="font-semibold text-white">Cambiar contraseña</h3>
+                <p id="ayuda-password" class="text-sm text-tezcat-textSecondary">Usa entre 12 y 128 caracteres. Al cambiarla, se cerrarán todas tus sesiones y tendrás que iniciar sesión de nuevo.</p>
+                {#if form && 'ajuste' in form && form.ajuste === 'password' && form.error}
+                  <p role="alert" class="text-sm text-red-300">{form.error}</p>
+                {/if}
+                {#each [{ id: 'actual', label: 'Contraseña actual', autocomplete: 'current-password' }, { id: 'nueva', label: 'Nueva contraseña', autocomplete: 'new-password' }, { id: 'confirmacion', label: 'Confirmar nueva contraseña', autocomplete: 'new-password' }] as campo}
+                  <div class="space-y-1.5">
+                    <label for={campo.id} class="block text-sm font-medium">{campo.label}</label>
+                    <input id={campo.id} name={campo.id} type="password" autocomplete={campo.id === 'actual' ? 'current-password' : 'new-password'} required minlength={campo.id === 'actual' ? undefined : 12} maxlength={campo.id === 'actual' ? 1024 : 128} aria-describedby="ayuda-password" class="w-full rounded-lg border border-tezcat-border bg-tezcat-bg px-3 py-2.5 text-sm focus:border-tezcat-cyan focus:outline-none focus:ring-1 focus:ring-tezcat-cyan" />
+                  </div>
+                {/each}
+                <button disabled={guardandoPassword} class="rounded-lg bg-tezcat-cyan px-4 py-2.5 text-sm font-semibold text-slate-950 hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-tezcat-cyan disabled:opacity-50">{guardandoPassword ? 'Cambiando…' : 'Cambiar contraseña'}</button>
+              </form>
+            </div>
+          </Panel>
         </div>
-      </Panel>
+      </details>
     {/if}
 
     <!-- TW-20 y TW-18: Gráfica Radar Interactiva y Valores Numéricos de Ramas de Habilidad -->
