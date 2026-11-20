@@ -168,6 +168,12 @@ export const tareaRamas = pgTable('tarea_ramas', {
   index('tarea_ramas_rama_idx').on(t.ramaId)
 ]);
 
+// El identificador histórico se conserva aunque se borre la tarea.
+export const contribucionesOpcionales = pgTable('contribuciones_opcionales', {
+  tareaId: uuid('tarea_id').primaryKey(),
+  usuarioId: uuid('usuario_id').notNull().references(() => usuarios.id, { onDelete: 'cascade' })
+}, (t) => [index('contribuciones_opcionales_usuario_idx').on(t.usuarioId)]);
+
 export const movimientosXp = pgTable('movimientos_xp', {
   id: uuid('id').defaultRandom().primaryKey(),
   usuarioId: uuid('usuario_id').notNull().references(() => usuarios.id, { onDelete: 'cascade' }),

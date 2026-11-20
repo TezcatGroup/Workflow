@@ -5,6 +5,7 @@ import { db } from '$lib/server/db';
 import {
   canjes,
   departamentos,
+  contribucionesOpcionales as contribucionesAprobadas,
   etiquetas,
   movimientosPuntos,
   movimientosRama,
@@ -17,6 +18,7 @@ import {
   usuarios
 } from '$lib/server/db/schema';
 import { campo } from '$lib/server/admin';
+import { solicitarCanje } from '$lib/server/canjes';
 import { cambiarPassword, exigirPerfilEditable, guardarFoto, quitarFoto } from '$lib/server/perfil';
 import { COOKIE_NAME } from '$lib/server/auth';
 
@@ -46,7 +48,8 @@ export const load: PageServerLoad = async ({ locals }) => {
     recompensasDisponibles,
     misCanjes,
     historialPuntos,
-    tareasOpcionalesTerminadasBD
+    tareasOpcionalesTerminadasBD,
+    [conteoContribuciones]
   ] = await Promise.all([
     db
       .select({ total: sql<string>`coalesce(sum(${movimientosXp.cantidad}), 0)` })
@@ -163,7 +166,10 @@ export const load: PageServerLoad = async ({ locals }) => {
         )
       )
       .orderBy(desc(tareas.actualizadoEn))
-      .limit(20)
+      .limit(20),
+    db.select({ total: sql<number>`count(*)::int` })
+      .from(contribucionesAprobadas)
+      .where(eq(contribucionesAprobadas.usuarioId, user.id))
   ]);
 
   // Obtener etiquetas asociadas a cada contribución opcional aprobada
@@ -245,7 +251,7 @@ export const load: PageServerLoad = async ({ locals }) => {
     }));
 
   // TW-19: Insignias y logros calculados a partir de movimientos registrados
-  const totalContribuciones = Math.max(contribucionesOpcionales.length, historialXp.length);
+  const totalContribuciones = conteoContribuciones.total;
   const maxPuntosRama = habilidades.reduce((max, h) => Math.max(max, h.puntos), 0);
   const ramasLenguajeActivas = habilidades.filter(
     (h) => h.categoria === 'LENGUAJE DE PROGRAMACIÓN' && h.puntos > 0
@@ -333,6 +339,7 @@ export const load: PageServerLoad = async ({ locals }) => {
     especialidades,
     insignias,
     contribucionesOpcionales,
+    totalContribuciones,
     historialXp,
     recompensas: recompensasDisponibles,
     misCanjes,
@@ -373,69 +380,13 @@ export const actions: Actions = {
     }
 
     try {
-      const nombreRecompensa = await db.transaction(async (tx) => {
-        // Serializa los descuentos del mismo usuario, incluso entre artículos y rutas distintos.
-        await tx.select({ id: usuarios.id }).from(usuarios).where(eq(usuarios.id, user.id)).for('update');
-        // 1. Bloquear la fila de la recompensa para evitar condiciones de carrera con el stock
-        const [rec] = await tx
-          .select()
-          .from(recompensas)
-          .where(and(eq(recompensas.id, recompensaId), eq(recompensas.activo, true)))
-          .for('update');
-
-        if (!rec) {
-          throw new Error('La recompensa ya no está disponible en el catálogo.');
-        }
-        if (rec.stock !== null && rec.stock <= 0) {
-          throw new Error(`La recompensa "${rec.nombre}" se encuentra agotada.`);
-        }
-
-        // 2. Consultar el saldo real de monedas del integrante dentro de la transacción
-        const [saldoActual] = await tx
-          .select({
-            total: sql<number>`coalesce(sum(${movimientosPuntos.cantidad}), 0)::int`
-          })
-          .from(movimientosPuntos)
-          .where(eq(movimientosPuntos.usuarioId, user.id));
-
-        const disponibles = saldoActual?.total ?? 0;
-        if (disponibles < rec.costoPuntos) {
-          throw new Error(
-            `Saldo insuficiente. Tienes ${disponibles} monedas y "${rec.nombre}" cuesta ${rec.costoPuntos} monedas.`
-          );
-        }
-
-        // 3. Descontar 1 unidad del stock si la recompensa tiene inventario finito
-        if (rec.stock !== null) {
-          await tx
-            .update(recompensas)
-            .set({ stock: rec.stock - 1, actualizadaEn: new Date() })
-            .where(eq(recompensas.id, rec.id));
-        }
-
-        // 4. Registrar la solicitud de canje en estado PENDIENTE
-        await tx.insert(canjes).values({
-          usuarioId: user.id,
-          recompensaId: rec.id,
-          puntosGastados: rec.costoPuntos,
-          estado: 'PENDIENTE'
-        });
-
-        // 5. Descontar las monedas del saldo del integrante registrando el movimiento negativo
-        await tx.insert(movimientosPuntos).values({
-          usuarioId: user.id,
-          tareaId: null,
-          cantidad: -rec.costoPuntos,
-          motivo: `Canje de recompensa: ${rec.nombre}`
-        });
-
-        return rec.nombre;
-      });
+      const { nombre } = await solicitarCanje(user, recompensaId, 'perfil');
 
       return {
-        ok: `¡Canje exitoso! Solicitaste "${nombreRecompensa}". Queda pendiente de entrega por administración.`
+        ok: `¡Canje exitoso! Solicitaste "${nombre}". Queda pendiente de pago.`
       };
     } catch (e) {
+      if (isHttpError(e)) return fail(e.status, { error: e.body.message });
       const mensaje = e instanceof Error ? e.message : 'No fue posible procesar el canje.';
       return fail(400, { error: mensaje });
     }

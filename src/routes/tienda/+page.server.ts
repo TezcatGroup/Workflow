@@ -1,4 +1,4 @@
-import { fail, redirect, type Actions } from '@sveltejs/kit';
+import { fail, isHttpError, redirect, type Actions } from '@sveltejs/kit';
 import { and, asc, desc, eq, sql } from 'drizzle-orm';
 import type { PageServerLoad } from './$types';
 import { db } from '$lib/server/db';
@@ -10,6 +10,7 @@ import {
   usuarios
 } from '$lib/server/db/schema';
 import { campo } from '$lib/server/admin';
+import { pagarCanje, solicitarCanje } from '$lib/server/canjes';
 
 const XP_POR_NIVEL = 1000;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -21,7 +22,7 @@ export const load: PageServerLoad = async ({ locals }) => {
   // El administrador gestiona el catálogo desde /admin/recompensas
   if (user.rol === 'ADMIN') redirect(303, '/admin/recompensas');
 
-  const [[monedas], [exp], listaRecompensas, historialCanjes, movimientosMonedas] =
+  const [[monedas], [exp], listaRecompensas, historialCanjes, movimientosMonedas, canjesArea] =
     await Promise.all([
       db
         .select({ total: sql<number>`coalesce(sum(${movimientosPuntos.cantidad}), 0)::int` })
@@ -62,7 +63,17 @@ export const load: PageServerLoad = async ({ locals }) => {
         .from(movimientosPuntos)
         .where(eq(movimientosPuntos.usuarioId, user.id))
         .orderBy(desc(movimientosPuntos.creadoEn))
-        .limit(30)
+        .limit(30),
+      user.rol === 'ENCARGADO' && user.departamentoId
+        ? db.select({
+          id: canjes.id, usuarioNombre: usuarios.nombre, recompensaNombre: recompensas.nombre,
+          puntosGastados: canjes.puntosGastados, creadoEn: canjes.creadoEn
+        }).from(canjes)
+          .innerJoin(usuarios, eq(canjes.usuarioId, usuarios.id))
+          .leftJoin(recompensas, eq(canjes.recompensaId, recompensas.id))
+          .where(and(eq(usuarios.departamentoId, user.departamentoId), eq(canjes.estado, 'PENDIENTE')))
+          .orderBy(asc(canjes.creadoEn))
+        : Promise.resolve([])
     ]);
 
   const saldo = monedas?.total ?? 0;
@@ -80,6 +91,7 @@ export const load: PageServerLoad = async ({ locals }) => {
     nivel,
     recompensas: listaRecompensas,
     canjes: historialCanjes,
+    canjesArea,
     movimientos: movimientosMonedas,
     totalCanjeadoHistorico
   };
@@ -102,78 +114,27 @@ export const actions: Actions = {
     }
 
     try {
-      const resultado = await db.transaction(async (tx) => {
-        // Serializa los descuentos del mismo usuario, incluso entre artículos y rutas distintos.
-        await tx.select({ id: usuarios.id }).from(usuarios).where(eq(usuarios.id, user.id)).for('update');
-        // 1. Verificar recompensa activa y bloquear fila para evitar condición de carrera en stock
-        const [rec] = await tx
-          .select()
-          .from(recompensas)
-          .where(and(eq(recompensas.id, recompensaId), eq(recompensas.activo, true)))
-          .for('update');
-
-        if (!rec) {
-          throw new Error('Esta recompensa ya no se encuentra activa en la tienda.');
-        }
-
-        if (rec.stock !== null && rec.stock <= 0) {
-          throw new Error(`El artículo "${rec.nombre}" se ha agotado.`);
-        }
-
-        // 2. Verificar saldo real disponible en movimientos_puntos
-        const [saldoBD] = await tx
-          .select({ total: sql<number>`coalesce(sum(${movimientosPuntos.cantidad}), 0)::int` })
-          .from(movimientosPuntos)
-          .where(eq(movimientosPuntos.usuarioId, user.id));
-
-        const saldoActual = saldoBD?.total ?? 0;
-        if (saldoActual < rec.costoPuntos) {
-          throw new Error(
-            `Saldo insuficiente. Tienes ${saldoActual} monedas y "${rec.nombre}" requiere ${rec.costoPuntos} monedas.`
-          );
-        }
-
-        // 3. Reducir en 1 el stock si maneja inventario limitado
-        if (rec.stock !== null) {
-          await tx
-            .update(recompensas)
-            .set({ stock: rec.stock - 1, actualizadaEn: new Date() })
-            .where(eq(recompensas.id, rec.id));
-        }
-
-        // 4. Registrar el canje permanente en estado PENDIENTE para gestión en /admin/recompensas
-        const [nuevoCanje] = await tx
-          .insert(canjes)
-          .values({
-            usuarioId: user.id,
-            recompensaId: rec.id,
-            puntosGastados: rec.costoPuntos,
-            estado: 'PENDIENTE'
-          })
-          .returning({ id: canjes.id });
-
-        // 5. Descontar una sola vez las monedas del saldo general del usuario
-        await tx.insert(movimientosPuntos).values({
-          usuarioId: user.id,
-          tareaId: null,
-          cantidad: -rec.costoPuntos,
-          motivo: `Canje en tienda: ${rec.nombre}`
-        });
-
-        return {
-          folio: nuevoCanje.id.slice(0, 8).toUpperCase(),
-          nombre: rec.nombre,
-          costo: rec.costoPuntos,
-          saldoRestante: saldoActual - rec.costoPuntos
-        };
-      });
+      const resultado = await solicitarCanje(user, recompensaId, 'tienda');
 
       return {
-        ok: `¡Canje confirmado (#${resultado.folio})! Solicitaste "${resultado.nombre}" por ${resultado.costo} monedas. Saldo restante: ${resultado.saldoRestante} monedas.`
+        ok: `¡Canje confirmado (#${resultado.folio})! Solicitaste "${resultado.nombre}" por ${resultado.costo} monedas. Queda pendiente de pago. Saldo restante: ${resultado.saldoRestante} monedas.`
       };
     } catch (e) {
+      if (isHttpError(e)) return fail(e.status, { error: e.body.message });
       const mensaje = e instanceof Error ? e.message : 'Error al procesar el canje.';
       return fail(400, { error: mensaje });
+    }
+  },
+  pagarCanje: async ({ locals, request }) => {
+    if (!locals.user) redirect(303, '/login');
+    const canjeId = campo(await request.formData(), 'canjeId');
+    if (!UUID.test(canjeId)) return fail(400, { error: 'ID de canje inválido.' });
+    try {
+      await pagarCanje(locals.user, canjeId);
+      return { ok: 'Canje marcado como pagado.' };
+    } catch (e) {
+      if (isHttpError(e)) return fail(e.status, { error: e.body.message });
+      throw e;
     }
   }
 };

@@ -170,7 +170,7 @@
             Contribuciones Opcionales
           </dt>
           <dd class="mt-1 font-mono text-xl font-bold text-white">
-            {data.contribucionesOpcionales.length} aprobadas
+            {data.totalContribuciones} aprobadas
           </dd>
           <p class="mt-0.5 font-mono text-[10px] text-tezcat-textMuted uppercase">
             Depto: {data.departamento ?? 'Sin asignar'}
@@ -348,7 +348,7 @@
                   ? 'border-tezcat-cyan/60 bg-tezcat-cyan/15 text-tezcat-cyan'
                   : 'border-tezcat-border bg-tezcat-bg text-tezcat-textSecondary hover:text-white'}"
             >
-              Contribuciones Opcionales ({data.contribucionesOpcionales.length})
+              Contribuciones Opcionales ({data.totalContribuciones})
             </button>
             <button
               type="button"
@@ -377,7 +377,7 @@
               <div class="rounded-xl border border-dashed border-tezcat-border bg-tezcat-bg/50 p-8 text-center">
                 <span class="material-symbols-outlined text-3xl text-tezcat-textMuted">task_alt</span>
                 <p class="mt-2 text-xs font-semibold text-tezcat-textSecondary">
-                  Aún no tienes contribuciones opcionales aprobadas
+                  {data.totalContribuciones ? 'El detalle de las tareas aprobadas ya no está disponible' : 'Aún no tienes contribuciones opcionales aprobadas'}
                 </p>
                 <p class="mt-1 text-[11px] text-tezcat-textMuted">
                   Cuando tomes una tarea del Muro de Oportunidades y el encargado la apruebe, aparecerá aquí con sus etiquetas y recompensas.

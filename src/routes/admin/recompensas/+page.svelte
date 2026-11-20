@@ -41,7 +41,7 @@
       clase: 'border-amber-400/40 bg-amber-400/10 text-amber-300'
     },
     CANJE_ENTREGADO: {
-      texto: 'Canje Entregado',
+      texto: 'Canje pagado',
       clase: 'border-emerald-400/40 bg-emerald-400/10 text-emerald-300'
     },
     CANJE_CANCELADO: {
@@ -249,7 +249,7 @@
                     {#if c.estado === 'PENDIENTE'}
                       <span class="rounded border border-amber-400/30 bg-amber-400/15 px-2 py-0.5 font-mono text-[9px] font-bold tracking-wider text-amber-300 uppercase">Pendiente</span>
                     {:else if c.estado === 'ENTREGADO'}
-                      <span class="rounded border border-emerald-400/30 bg-emerald-400/15 px-2 py-0.5 font-mono text-[9px] font-bold tracking-wider text-emerald-300 uppercase">Entregado</span>
+                      <span class="rounded border border-emerald-400/30 bg-emerald-400/15 px-2 py-0.5 font-mono text-[9px] font-bold tracking-wider text-emerald-300 uppercase">Pagado</span>
                     {:else}
                       <span class="rounded border border-red-400/30 bg-red-400/15 px-2 py-0.5 font-mono text-[9px] font-bold tracking-wider text-red-300 uppercase">Cancelado</span>
                     {/if}
@@ -261,7 +261,7 @@
                         <input type="hidden" name="canjeId" value={c.id} />
                         <input type="hidden" name="accion" value="ENTREGAR" />
                         <button type="submit" class="w-full rounded-lg border border-emerald-400/30 bg-emerald-400/10 py-1.5 text-xs font-semibold text-emerald-300 hover:bg-emerald-400/20">
-                          Marcar Entregado
+                          Marcar como pagado
                         </button>
                       </form>
                       <form method="POST" action="?/resolverCanje" use:enhance class="flex-1">

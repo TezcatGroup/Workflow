@@ -5,6 +5,7 @@ import {
   etiquetas,
   tareaEtiquetas,
   departamentos,
+  contribucionesOpcionales,
   movimientosXp,
   movimientosPuntos,
   ramas,
@@ -542,6 +543,7 @@ export async function cambiarEstado(
       });
     } else if (esAprobacionRevision) {
       if (tarea.tipo === 'OPCIONAL' && tarea.responsableId) {
+        await tx.insert(contribucionesOpcionales).values({ tareaId: tarea.id, usuarioId: tarea.responsableId });
         const recompensa = {
           usuarioId: tarea.responsableId,
           tareaId: tarea.id,

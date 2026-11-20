@@ -78,6 +78,13 @@
       "when": 1795132800000,
       "tag": "0010_fecha_limite_opcional",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1795136400000,
+      "tag": "0011_historial_contribuciones",
+      "breakpoints": true
     }
   ]
 }
