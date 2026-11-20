@@ -6,6 +6,9 @@
   let buscar = $state(''), estado = $state('');
   const lista = $derived(data.proyectos.filter(p => p.nombre.toLocaleLowerCase().includes(buscar.toLocaleLowerCase()) && (!estado || String(p.activo) === estado)));
   const campo = 'mt-1 w-full rounded-lg border border-tezcat-border bg-tezcat-bg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-tezcat-cyan';
+  const estadoTarea = {
+    ASIGNADA: 'Asignada', EN_PROCESO: 'En proceso', EN_REVISION: 'En revisión', TERMINADA: 'Terminada'
+  };
   const boton = 'rounded-lg border border-tezcat-cyan/40 bg-tezcat-cyan/10 px-4 py-2.5 text-sm font-semibold text-tezcat-cyan hover:bg-tezcat-cyan/20';
 </script>
 <svelte:head><title>Proyectos | Tezcat Workflow</title></svelte:head>
@@ -36,6 +39,25 @@
             <label class="sm:col-span-2">Descripción<textarea class={campo} name="descripcion" maxlength="5000" rows="3">{p.descripcion ?? ''}</textarea></label>
             <button class="{boton} justify-self-start" type="submit">Guardar cambios</button>
           </form>
+          <section aria-label={`Tareas de ${p.nombre}`} class="mt-5 border-t border-tezcat-border pt-4">
+            <h3 class="font-semibold">Tareas relacionadas ({p.tareas.length})</h3>
+            {#if p.tareas.length}
+              <ul class="mt-2 divide-y divide-tezcat-border">
+                {#each p.tareas as tarea (tarea.id)}
+                  <li class="flex flex-wrap items-center justify-between gap-2 py-2.5">
+                    <a href={`/tareas/${tarea.id}`} class="min-w-0 break-words text-sm font-semibold text-tezcat-cyan hover:underline focus-visible:outline-2 focus-visible:outline-tezcat-cyan">
+                      {tarea.titulo}
+                    </a>
+                    <span class="rounded border border-tezcat-border px-2 py-1 text-xs text-tezcat-textSecondary">
+                      {estadoTarea[tarea.estado]}
+                    </span>
+                  </li>
+                {/each}
+              </ul>
+            {:else}
+              <p class="mt-2 text-sm text-tezcat-textSecondary">No hay tareas vinculadas a este proyecto.</p>
+            {/if}
+          </section>
         </details>
       {:else}<p class="rounded-xl border border-tezcat-border p-8 text-center text-tezcat-textSecondary">No hay proyectos con esos filtros. Crea uno para organizar las tareas.</p>{/each}
     </section>
