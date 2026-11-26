@@ -5,6 +5,9 @@ services:
     restart: unless-stopped
     stop_grace_period: 45s
     environment:
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@utslp.com}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-Pass123456}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-Pass123456}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-}
@@ -13,7 +16,7 @@ services:
     volumes:
       - workflow_data:/var/lib/workflow
     ports:
-      - "3000:3000"
+      - "${APP_PORT:-3000}:3000"
 
 volumes:
   workflow_data:
