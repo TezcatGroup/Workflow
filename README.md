@@ -10,7 +10,7 @@ Necesitas internet para la primera construcción.
 Copia y ejecuta este bloque, igual en PowerShell, Linux o macOS:
 
 ```text
-docker compose -p workflow-unico up -d --build --no-recreate
+docker compose -p workflow-unico up -d --build --wait --wait-timeout 120
 docker compose -p workflow-unico exec -T app node docker/universidad/access.mjs
 ```
 
@@ -50,10 +50,16 @@ versión probada; los cambios posteriores se documentan en sus informes.
 
 ## Volver a abrir o actualizar
 
-Repetir el bloque inicial reutiliza el contenedor existente y conserva los datos.
-**`--no-recreate` no actualiza un contenedor anterior**, aunque el código del
-repositorio haya cambiado. Los cambios del proyecto requieren reconstruir la
-imagen y recrear el contenedor para aplicarse.
+Repetir el bloque inicial construye el código actual y recrea el contenedor si
+la imagen o configuración cambió. Conserva los datos en el mismo volumen y
+espera a que la aplicación esté saludable. No uses `--no-recreate` para actualizar:
+esa opción mantiene el contenedor antiguo aunque se haya construido otra imagen.
+
+Si el puerto 3000 está ocupado, comprueba `docker ps` y define `APP_PORT=3004`
+en `.env` para abrir esta instalación en `http://localhost:3004`. Cambiar el puerto
+no cambia el volumen ni restablece cuentas. También puedes definir `ADMIN_EMAIL`,
+`ADMIN_PASSWORD` y `POSTGRES_PASSWORD` para una instalación nueva; Compose los
+transmite al contenedor. Las contraseñas requieren al menos 10 caracteres.
 
 Para instalar una versión nueva con datos existentes, sigue la
 [guía de actualización con volumen](DOCKER_DEPLOYMENT.md#actualizar-o-recrear-una-instalación-con-volumen)

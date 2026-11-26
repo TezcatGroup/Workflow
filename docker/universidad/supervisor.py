@@ -87,6 +87,22 @@ def main():
             raise RuntimeError('Falta db-password de una base existente; restaura la configuración, no se regenerará')
     elif DATA.exists() and any(DATA.iterdir()):
         raise RuntimeError('El directorio postgres contiene datos sin PG_VERSION; no se reinicializará')
+    # Validar antes de initdb: una configuración incorrecta no debe dejar
+    # un volumen con PG_VERSION pero sin contraseña o administrador utilizable.
+    password = password_file.read_text() if password_file.exists() else os.environ.get('POSTGRES_PASSWORD') or 'Pass123456'
+    if not password_file.exists() and len(password) < 10:
+        raise ValueError('POSTGRES_PASSWORD debe tener al menos 10 caracteres')
+    credentials_file = ROOT / 'initial-admin.json'
+    credentials = json.loads(credentials_file.read_text()) if credentials_file.exists() else {
+        'email': os.environ.get('ADMIN_EMAIL') or 'admin@utslp.com',
+        'password': os.environ.get('ADMIN_PASSWORD') or 'Pass123456'
+    }
+    email = credentials.get('email', '').strip().lower()
+    if '@' not in email or email == 'admin@local.test' or len(credentials.get('password', '')) < 10:
+        raise ValueError('Primera inicialización: define ADMIN_EMAIL válido y ADMIN_PASSWORD de al menos 10 caracteres')
+    if not password_file.exists():
+        with open(password_file, 'x', opener=lambda path, flags: os.open(path, flags, 0o600)) as file:
+            file.write(password)
     uploads = ROOT / 'uploads'
     uploads.mkdir(mode=0o700, exist_ok=True)
     os.chown(uploads, node.pw_uid, node.pw_gid)
@@ -95,13 +111,6 @@ def main():
     if not (DATA / 'PG_VERSION').exists():
         wait(start([BIN + 'initdb', '-D', str(DATA), '--auth-local=peer',
                     '--auth-host=scram-sha-256', '--encoding=UTF8', '--locale=C.UTF-8'], 'postgres'))
-    if not password_file.exists():
-        password = os.environ.get('POSTGRES_PASSWORD') or 'Pass123456'
-        if len(password) < 10:
-            raise ValueError('POSTGRES_PASSWORD debe tener al menos 10 caracteres')
-        with open(password_file, 'x', opener=lambda path, flags: os.open(path, flags, 0o600)) as file:
-            file.write(password)
-    password = password_file.read_text()
     pg = start([BIN + 'postgres', '-D', str(DATA), '-c', 'listen_addresses=127.0.0.1',
                 '-c', 'unix_socket_directories=/run/postgresql'], 'postgres')
     deadline = time.monotonic() + 60
@@ -123,13 +132,9 @@ def main():
          "WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = 'workflow') \\gexec\n")
     environment = dict(os.environ)
     environment['DATABASE_URL'] = 'postgresql://admin%40utslp.com:' + quote(password, safe='') + '@127.0.0.1:5432/workflow'
-    credentials_file = ROOT / 'initial-admin.json'
     if not credentials_file.exists():
-        credentials = {'email': os.environ.get('ADMIN_EMAIL') or 'admin@utslp.com',
-                       'password': os.environ.get('ADMIN_PASSWORD') or 'Pass123456'}
         with open(credentials_file, 'x', opener=lambda path, flags: os.open(path, flags, 0o600)) as file:
             json.dump(credentials, file)
-    credentials = json.loads(credentials_file.read_text())
     environment['ADMIN_EMAIL'] = credentials['email']
     environment['ADMIN_PASSWORD'] = credentials['password']
     environment['PROTOCOL_HEADER'] = 'x-workflow-protocol'

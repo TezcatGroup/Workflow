@@ -32,7 +32,7 @@ carpeta del repositorio y copia este bloque completo. Los mismos comandos sirven
 en Windows (PowerShell), Linux y macOS:
 
 ```text
-docker compose -p workflow-unico up -d --build --no-recreate
+docker compose -p workflow-unico up -d --build --wait --wait-timeout 120
 docker compose -p workflow-unico exec -T app node docker/universidad/access.mjs
 ```
 
@@ -44,12 +44,32 @@ http://localhost:3000. Desde otra máquina de la red usa http://IP_DEL_EQUIPO:30
 El firewall del anfitrión debe permitir el acceso; el script no modifica el firewall.
 
 Solo se crea **un contenedor `app`**, con frontend, backend y PostgreSQL 16.
-`--no-recreate` reutiliza el contenedor existente; repetir el bloque no borra sus
-datos ni cambia sus contraseñas. Tampoco actualiza un contenedor existente:
-para actualizar una instalación que ya usa el volumen, sigue el procedimiento
-de persistencia de esta guía.
-Si el puerto 3000 está ocupado, Docker lo informa; no se detienen servicios ajenos.
+El comando reconstruye y actualiza el contenedor cuando cambia la imagen, conserva
+el volumen y espera el estado saludable. No restablece contraseñas existentes.
+Antes de actualizar una instalación antigua, comprueba su volumen y realiza el
+respaldo indicado en el procedimiento de persistencia de esta guía.
+Si el puerto 3000 está ocupado, define `APP_PORT=3004` en `.env` y abre
+`http://localhost:3004`; no se detienen servicios ajenos. Si defines `ORIGIN`,
+actualízalo también a esa dirección. No uses `--no-recreate` para instalar cambios.
 Docker Compose v2 es requisito (incluido en Docker Desktop).
+
+### Verificar recuperación de configuración inicial
+
+Desde un entorno de desarrollo con Node.js y Docker, después de construir la imagen:
+
+```text
+node scripts/verify-docker-startup.mjs workflow:local
+```
+
+La prueba crea volúmenes exclusivos, rechaza contraseñas inválidas de PostgreSQL y
+del administrador, corrige la configuración usando el mismo volumen y verifica
+el acceso, las funciones sin red y la persistencia tras reiniciar. Conserva sus
+contenedores detenidos y muestra sus nombres y volúmenes para inspección; no toca
+instalaciones existentes. Una configuración inicial inválida debe poder corregirse
+sin borrar el volumen. No se aplica esta recuperación automática a bases antiguas
+que ya perdieron `db-password`: requieren recuperar su configuración o respaldo.
+
+Resultados de la última revisión: [validación del 25 de noviembre](docker/universidad/REVISION_2026-11-25.md).
 
 ## Credenciales y red
 
@@ -149,7 +169,7 @@ el procedimiento de fase 5 está en [BACKUP_RECOVERY.md](BACKUP_RECOVERY.md).
 Para una instalación con ese volumen, reconstruir y recrear mantiene los datos:
 
 ```text
-docker compose -p workflow-unico up -d --build --force-recreate
+docker compose -p workflow-unico up -d --build --force-recreate --wait --wait-timeout 120
 docker compose -p workflow-unico exec -T app node docker/universidad/access.mjs
 ```
 
